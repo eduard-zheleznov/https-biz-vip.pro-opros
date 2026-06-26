@@ -202,6 +202,7 @@ const PHONE_COUNTRIES: PhoneCountry[] = [
 
 const MOBILE_RUNTIME_TOP_OFFSET = 32;
 const MOBILE_SCROLL_RETRY_DELAYS = [80, 180, 360, 700, 1100, 1800] as const;
+const MOBILE_BROWSER_TOP_INSET_MAX = 140;
 
 const RECORDER_MIME_TYPES = [
   "audio/mp4;codecs=mp4a.40.2",
@@ -1189,6 +1190,12 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
   const typography = schema.settings.typography;
   const mobileTypography = schema.settings.mobileTypography;
   const typographyVariables = buildTypographyVariables(typography, mobileTypography);
+  const runtimeStyle = {
+    ...typographyVariables,
+    "--survey-mobile-browser-top-inset": "0px",
+    overflowAnchor: "none",
+    paddingTop: "var(--survey-mobile-browser-top-inset)",
+  } as CSSProperties & Record<string, string>;
   const textWrapStyle = wrapTextStyle();
   const answerTextStyle = textWrapStyle;
   const useStructuredMobileQuestionText = shouldUseStructuredMobileQuestionTitle(schema.title);
@@ -1406,6 +1413,19 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
     );
   }
 
+  function readMobileBrowserTopInset() {
+    if (typeof window === "undefined" || window.innerWidth >= 640) {
+      return 0;
+    }
+
+    return Math.min(Math.max(Math.round(window.visualViewport?.offsetTop ?? 0), 0), MOBILE_BROWSER_TOP_INSET_MAX);
+  }
+
+  function applyMobileBrowserTopInset() {
+    const inset = readMobileBrowserTopInset();
+    runtimeRef.current?.style.setProperty("--survey-mobile-browser-top-inset", `${inset}px`);
+  }
+
   function scrollToRuntimeTop(behavior: ScrollBehavior = "smooth") {
     if (typeof window === "undefined") {
       return;
@@ -1420,6 +1440,10 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
       if (isMobile && isEditableElementFocused()) {
         cancelPendingMobileScrollAdjustments();
         return;
+      }
+
+      if (isMobile) {
+        applyMobileBrowserTopInset();
       }
 
       const target = isMobile
@@ -2003,7 +2027,7 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
         : null;
 
   return (
-    <div ref={runtimeRef} className="survey-runtime space-y-4 sm:space-y-6" style={typographyVariables}>
+    <div ref={runtimeRef} className="survey-runtime space-y-4 sm:space-y-6" style={runtimeStyle}>
       <style>{SURVEY_RUNTIME_TYPOGRAPHY_CSS}</style>
       {false ? <Card className="border-slate-200 p-8">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">

@@ -723,6 +723,8 @@ describe("PublicRuntime mobile interactions", () => {
     expect(lastCall?.[0].top).toBe(968);
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
     expect(visualViewportAddEventListener).not.toHaveBeenCalled();
+    const runtime = container.querySelector(".survey-runtime") as HTMLElement | null;
+    expect(runtime?.style.getPropertyValue("--survey-mobile-browser-top-inset")).toBe("48px");
 
     root.unmount();
   });
