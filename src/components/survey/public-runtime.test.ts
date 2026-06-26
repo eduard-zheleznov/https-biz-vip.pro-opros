@@ -708,7 +708,7 @@ describe("PublicRuntime mobile interactions", () => {
     await waitForCondition(() => scrollToMock.mock.calls.length > 0);
     const lastCall = scrollToMock.mock.calls.at(-1) as [{ top: number; behavior: ScrollBehavior }] | undefined;
     expect(lastCall?.[0].behavior).toBe("auto");
-    expect(lastCall?.[0].top).toBe(968);
+    expect(lastCall?.[0].top).toBe(944);
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
 
     root.unmount();
@@ -780,7 +780,7 @@ describe("PublicRuntime mobile interactions", () => {
     await waitForCondition(() => scrollToMock.mock.calls.length > 0);
     const lastCall = scrollToMock.mock.calls.at(-1) as [{ top: number; behavior: ScrollBehavior }] | undefined;
     expect(lastCall?.[0].behavior).toBe("auto");
-    expect(lastCall?.[0].top).toBe(968);
+    expect(lastCall?.[0].top).toBe(944);
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
     expect(container.textContent).toContain("Второй текстовый вопрос");
 

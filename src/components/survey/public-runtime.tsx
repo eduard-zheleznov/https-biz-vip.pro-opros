@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties, RefObject } from "react";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import { ArrowRight, ChevronDown, ChevronUp, Clock3, Info, LoaderCircle, Mic, Paperclip, Square, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -200,7 +200,8 @@ const PHONE_COUNTRIES: PhoneCountry[] = [
   { id: "me", label: "Черногория", dialCode: "+382", digits: 8, flag: "🇲🇪" },
 ];
 
-const MOBILE_RUNTIME_TOP_OFFSET = 32;
+const MOBILE_RUNTIME_TOP_OFFSET = 56;
+const MOBILE_SCROLL_RETRY_DELAYS = [80, 180, 360, 700, 1100] as const;
 
 const RECORDER_MIME_TYPES = [
   "audio/mp4;codecs=mp4a.40.2",
@@ -1203,7 +1204,7 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
     setOpenAdditionalInfoId(null);
   }, [currentBlockId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!shouldScrollAfterBlockChangeRef.current) {
       return;
     }
@@ -1351,11 +1352,27 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         scroll();
-        if (window.innerWidth < 640) {
-          window.setTimeout(scroll, 80);
-          window.setTimeout(scroll, 180);
-          window.setTimeout(scroll, 360);
+
+        if (window.innerWidth >= 640) {
+          return;
         }
+
+        const visualViewport = window.visualViewport;
+        const scrollAfterViewportChange = () => {
+          window.requestAnimationFrame(scroll);
+        };
+
+        visualViewport?.addEventListener("resize", scrollAfterViewportChange, { passive: true });
+        visualViewport?.addEventListener("scroll", scrollAfterViewportChange, { passive: true });
+
+        MOBILE_SCROLL_RETRY_DELAYS.forEach((delay) => {
+          window.setTimeout(scroll, delay);
+        });
+
+        window.setTimeout(() => {
+          visualViewport?.removeEventListener("resize", scrollAfterViewportChange);
+          visualViewport?.removeEventListener("scroll", scrollAfterViewportChange);
+        }, MOBILE_SCROLL_RETRY_DELAYS.at(-1)! + 120);
       });
     });
   }
