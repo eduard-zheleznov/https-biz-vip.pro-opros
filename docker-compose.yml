@@ -31,7 +31,7 @@ services:
       UPLOAD_DIR: /app/uploads
       DEFAULT_ADMIN_EMAIL: info@biz-vip.ru
       DEFAULT_ADMIN_PASSWORD: "12345678"
-      DEFAULT_MEMBER_PASSWORD: "123456"
+      DEFAULT_MEMBER_PASSWORD: "12345678"
       OPENAI_API_KEY: ""
       OPENAI_MODEL: ""
       TELEGRAM_BOT_TOKEN: ""
@@ -60,7 +60,7 @@ services:
       UPLOAD_DIR: /app/uploads
       DEFAULT_ADMIN_EMAIL: info@biz-vip.ru
       DEFAULT_ADMIN_PASSWORD: "12345678"
-      DEFAULT_MEMBER_PASSWORD: "123456"
+      DEFAULT_MEMBER_PASSWORD: "12345678"
       OPENAI_API_KEY: ""
       OPENAI_MODEL: ""
       TELEGRAM_BOT_TOKEN: ""
