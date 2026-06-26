@@ -690,10 +690,11 @@ describe("PublicRuntime mobile interactions", () => {
   });
 
   it("scrolls to the active runtime top on mobile after advancing without scrollIntoView", async () => {
+    const visualViewportAddEventListener = vi.fn();
     Object.defineProperty(window, "visualViewport", {
       value: {
         offsetTop: 48,
-        addEventListener: vi.fn(),
+        addEventListener: visualViewportAddEventListener,
         removeEventListener: vi.fn(),
       },
       configurable: true,
@@ -719,14 +720,16 @@ describe("PublicRuntime mobile interactions", () => {
     await waitForCondition(() => scrollToMock.mock.calls.length > 0);
     const lastCall = scrollToMock.mock.calls.at(-1) as [{ top: number; behavior: ScrollBehavior }] | undefined;
     expect(lastCall?.[0].behavior).toBe("auto");
-    expect(lastCall?.[0].top).toBe(920);
+    expect(lastCall?.[0].top).toBe(968);
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
+    expect(visualViewportAddEventListener).not.toHaveBeenCalled();
 
     root.unmount();
   });
 
   it("scrolls to the top on mobile after advancing from a text question", async () => {
     let postActiveElementTag = "";
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
 
     vi.stubGlobal(
       "fetch",
@@ -824,16 +827,27 @@ describe("PublicRuntime mobile interactions", () => {
     await waitForCondition(
       () =>
         container.textContent?.includes("Второй текстовый вопрос") === true &&
-        scrollToMock.mock.calls.slice(scrollCallsBeforeSubmit).some((call) => call[0]?.top === 920),
+        scrollToMock.mock.calls.slice(scrollCallsBeforeSubmit).some((call) => call[0]?.top === 968),
     );
     const lastCall = scrollToMock.mock.calls
       .slice(scrollCallsBeforeSubmit)
-      .findLast((call) => call[0]?.top === 920) as [{ top: number; behavior: ScrollBehavior }] | undefined;
+      .findLast((call) => call[0]?.top === 968) as [{ top: number; behavior: ScrollBehavior }] | undefined;
     expect(lastCall?.[0].behavior).toBe("auto");
-    expect(lastCall?.[0].top).toBe(920);
+    expect(lastCall?.[0].top).toBe(968);
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
     expect(postActiveElementTag).not.toBe("TEXTAREA");
     expect(container.textContent).toContain("Второй текстовый вопрос");
+
+    const nextTextarea = container.querySelector("textarea") as HTMLTextAreaElement | null;
+    expect(nextTextarea).not.toBeNull();
+    const clearTimeoutCallsBeforeFocus = clearTimeoutSpy.mock.calls.length;
+
+    await act(async () => {
+      nextTextarea!.focus();
+      await Promise.resolve();
+    });
+
+    expect(clearTimeoutSpy.mock.calls.length).toBeGreaterThan(clearTimeoutCallsBeforeFocus);
 
     root.unmount();
   });

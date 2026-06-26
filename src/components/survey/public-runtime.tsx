@@ -200,8 +200,8 @@ const PHONE_COUNTRIES: PhoneCountry[] = [
   { id: "me", label: "Черногория", dialCode: "+382", digits: 8, flag: "🇲🇪" },
 ];
 
-const MOBILE_RUNTIME_TOP_OFFSET = 80;
-const MOBILE_SCROLL_RETRY_DELAYS = [80, 180, 360, 700, 1100, 1800, 2600] as const;
+const MOBILE_RUNTIME_TOP_OFFSET = 32;
+const MOBILE_SCROLL_RETRY_DELAYS = [80, 180, 360] as const;
 
 const RECORDER_MIME_TYPES = [
   "audio/mp4;codecs=mp4a.40.2",
@@ -1172,6 +1172,7 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
   const currentBlockSectionRef = useRef<HTMLDivElement | null>(null);
   const additionalInfoRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollAfterBlockChangeRef = useRef(false);
+  const pendingMobileScrollTimeoutsRef = useRef<number[]>([]);
   const finishRef = useRef<(status: FinishStatus, options?: { allowPartialAnswers?: boolean }) => Promise<void>>(
     async () => undefined,
   );
@@ -1242,6 +1243,35 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [openAdditionalInfoId]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const cancelOnTextInputInteraction = (event: Event) => {
+      if (typeof window === "undefined" || window.innerWidth >= 640 || !(event.target instanceof HTMLElement)) {
+        return;
+      }
+
+      const editableTarget = event.target.closest(
+        'textarea,input,[role="textbox"],[contenteditable="true"],[contenteditable="plaintext-only"]',
+      );
+
+      if (editableTarget) {
+        cancelPendingMobileScrollAdjustments();
+      }
+    };
+
+    document.addEventListener("focusin", cancelOnTextInputInteraction, true);
+    document.addEventListener("pointerdown", cancelOnTextInputInteraction, true);
+
+    return () => {
+      document.removeEventListener("focusin", cancelOnTextInputInteraction, true);
+      document.removeEventListener("pointerdown", cancelOnTextInputInteraction, true);
+      cancelPendingMobileScrollAdjustments();
+    };
+  }, []);
 
   function doneUrl(status: NonNullable<ResponseSessionPayload["status"]>) {
     return withBasePath(`/s/${publicSlug}/done?status=${status.toLowerCase()}`);
@@ -1355,9 +1385,24 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
     });
   }
 
+  function cancelPendingMobileScrollAdjustments() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    pendingMobileScrollTimeoutsRef.current.forEach((timeoutId) => {
+      window.clearTimeout(timeoutId);
+    });
+    pendingMobileScrollTimeoutsRef.current = [];
+  }
+
   function scrollToRuntimeTop(behavior: ScrollBehavior = "smooth") {
     if (typeof window === "undefined") {
       return;
+    }
+
+    if (window.innerWidth < 640) {
+      cancelPendingMobileScrollAdjustments();
     }
 
     const scroll = () => {
@@ -1394,22 +1439,10 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
           return;
         }
 
-        const visualViewport = window.visualViewport;
-        const scrollAfterViewportChange = () => {
-          window.requestAnimationFrame(scroll);
-        };
-
-        visualViewport?.addEventListener("resize", scrollAfterViewportChange, { passive: true });
-        visualViewport?.addEventListener("scroll", scrollAfterViewportChange, { passive: true });
-
         MOBILE_SCROLL_RETRY_DELAYS.forEach((delay) => {
-          window.setTimeout(scroll, delay);
+          const timeoutId = window.setTimeout(scroll, delay);
+          pendingMobileScrollTimeoutsRef.current.push(timeoutId);
         });
-
-        window.setTimeout(() => {
-          visualViewport?.removeEventListener("resize", scrollAfterViewportChange);
-          visualViewport?.removeEventListener("scroll", scrollAfterViewportChange);
-        }, MOBILE_SCROLL_RETRY_DELAYS.at(-1)! + 120);
       });
     });
   }
