@@ -1,0 +1,184 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  buildResultCopyText,
+  calculateScorePercent,
+  extractSurveyAnalysisMaxScore,
+  inferAiScoreSummary,
+} from "@/lib/results";
+
+describe("result score helpers", () => {
+  it("uses full survey maximum for AI score percentages", () => {
+    const note = "ОПЫТ: 7/10 Краткий комментарий: Есть опыт. ЦЕННОСТИ: 8/10 Краткий комментарий: Подходит.";
+
+    expect(inferAiScoreSummary(note, 140)).toEqual({
+      totalScore: 15,
+      maxScore: 140,
+      percent: 11,
+    });
+  });
+
+  it("overrides incomplete explicit AI maximum with full survey maximum", () => {
+    const note = "СУММАРНЫЙ БАЛЛ: 44 из 70\nИТОГОВЫЙ РЕЗУЛЬТАТ: 63";
+
+    expect(inferAiScoreSummary(note, 140)).toEqual({
+      totalScore: 44,
+      maxScore: 140,
+      percent: 31,
+    });
+  });
+
+  it("parses decimal explicit AI scores with an override maximum", () => {
+    expect(inferAiScoreSummary("ОЦЕНКА: 15.6 / 300", 52)).toEqual({
+      totalScore: 15.6,
+      maxScore: 52,
+      percent: 30,
+    });
+  });
+
+  it("caps displayed percentage at 100", () => {
+    expect(calculateScorePercent(150, 140)).toBe(100);
+  });
+
+  it("keeps a visible non-zero percentage for positive scores below one percent", () => {
+    expect(calculateScorePercent(2, 1000)).toBe(1);
+    expect(calculateScorePercent(0, 1000)).toBe(0);
+  });
+
+  it("applies copy prompt overrides and hides scores when scoring is disabled", () => {
+    const copyText = buildResultCopyText({
+      surveyTitle: "Опрос",
+      status: "COMPLETED",
+      totalScore: 0,
+      maxScore: 0,
+      startedAt: new Date("2026-05-20T00:00:00.000Z"),
+      completedAt: new Date("2026-05-20T00:01:00.000Z"),
+      includeScore: false,
+      includeAnswerScores: false,
+      answerPromptOverrides: {
+        visible: "Короткая подпись",
+        hidden: "",
+      },
+      answers: [
+        {
+          blockId: "visible",
+          blockType: "TEXT",
+          prompt: "Обычный длинный вопрос",
+          value: "Ответ",
+          score: 0,
+        },
+        {
+          blockId: "hidden",
+          blockType: "TEXT",
+          prompt: "Не передавать",
+          value: "Скрытый ответ",
+          score: 0,
+        },
+      ],
+    });
+
+    expect(copyText).toContain("1. Короткая подпись: Ответ");
+    expect(copyText).not.toContain("Не передавать");
+    expect(copyText).not.toContain("Баллы:");
+    expect(copyText).not.toContain("Результат: 0 баллов");
+  });
+
+  it("formats AI note compactly for Telegram and copying", () => {
+    const copyText = buildResultCopyText({
+      surveyTitle: "Для оператора",
+      status: "COMPLETED",
+      totalScore: 0,
+      maxScore: 0,
+      startedAt: new Date("2026-05-20T00:00:00.000Z"),
+      includeScore: false,
+      includeAnswerScores: false,
+      aiNote: "Балл: 5/10\nКлиент готов начать в ближайшую неделю. ЦВЕТ:ЖЕЛТЫЙ",
+      answerPromptOverrides: {
+        service: "Вид услуги",
+      },
+      answers: [
+        {
+          blockId: "service",
+          blockType: "SINGLE_CHOICE",
+          prompt: "Здравствуйте! Меня зовут [Имя]. Верно?",
+          value: "Создание",
+          score: 0,
+        },
+      ],
+    });
+
+    expect(copyText).toContain("Опрос: Для оператора");
+    expect(copyText).toContain("Оценка ИИ: 5/10 (50%) 🟡");
+    expect(copyText).toContain("Пояснение: 🟡 Клиент готов начать в ближайшую неделю.");
+    expect(copyText).toContain("1. Вид услуги: Создание");
+    expect(copyText).not.toContain("Итоговая сумма баллов");
+    expect(copyText).not.toContain("ЦВЕТ");
+  });
+
+  it("parses object-like AI notes with percent, category and explanation", () => {
+    const copyText = buildResultCopyText({
+      surveyTitle: "Для операторов",
+      status: "COMPLETED",
+      totalScore: 0,
+      maxScore: 0,
+      startedAt: new Date("2026-05-20T00:00:00.000Z"),
+      includeScore: false,
+      includeAnswerScores: false,
+      aiNote:
+        '{ ПРОЦЕНТ: 81, ОЦЕНКА: "42.4/52", КАТЕГОРИЯ: "ЖЁЛТЫЙ", ПОЯСНЕНИЕ: "Клиент заинтересован, но результат не максимальный." }',
+      answers: [
+        {
+          blockId: "budget",
+          blockType: "TEXT",
+          prompt: "Бюджет",
+          value: "60 000",
+          score: 0,
+        },
+      ],
+    });
+
+    expect(copyText).toContain("Оценка ИИ: 42.4/52 (81%) 🟡");
+    expect(copyText).toContain("Пояснение: 🟡 Клиент заинтересован, но результат не максимальный.");
+    expect(copyText).toContain("1. Бюджет: 60 000");
+    expect(copyText).not.toContain("ПРОЦЕНТ");
+    expect(copyText).not.toContain("КАТЕГОРИЯ");
+  });
+
+  it("normalizes AI note score to the configured survey maximum", () => {
+    const copyText = buildResultCopyText({
+      surveyTitle: "Опрос",
+      status: "COMPLETED",
+      totalScore: 15.6,
+      maxScore: 52,
+      startedAt: new Date("2026-05-20T00:00:00.000Z"),
+      includeScore: true,
+      includeAnswerScores: false,
+      aiNote: "ПРОЦЕНТ: 5\nОЦЕНКА: 15.6 / 300\nПОЯСНЕНИЕ: Результат не максимальный.",
+      answers: [
+        {
+          blockId: "budget",
+          blockType: "TEXT",
+          prompt: "Бюджет",
+          value: "60 000",
+          score: 0,
+        },
+      ],
+    });
+
+    expect(copyText).toContain("Итоговая сумма баллов: 15.6 баллов из 52");
+    expect(copyText).toContain("Итоговый результат: 30% из 100%");
+    expect(copyText).toContain("Оценка ИИ: 15.6/52 (30%)");
+    expect(copyText).not.toContain("15.6 / 300");
+  });
+
+  it("extracts analysis max score from the AI prompt", () => {
+    expect(
+      extractSurveyAnalysisMaxScore(
+        "Оцени ответы. Максимум для итогового процента: 52 балла. Пиши кратко и по делу.",
+      ),
+    ).toBe(52);
+    expect(extractSurveyAnalysisMaxScore("Оцени ответы. Не более 52 баллов. Пиши кратко и по делу.")).toBe(52);
+    expect(extractSurveyAnalysisMaxScore("Оцени ответы. До 52 баллов включительно. Пиши кратко и по делу.")).toBe(52);
+    expect(extractSurveyAnalysisMaxScore("Оцени ответы. 52 балла максимум. Пиши кратко и по делу.")).toBe(52);
+  });
+});

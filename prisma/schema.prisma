@@ -1,0 +1,324 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  MEMBER
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  DELETED
+}
+
+enum SurveyLifecycleStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum SurveyFolderKey {
+  MY_SURVEYS
+  CUSTOM
+  RESTORED
+  ARCHIVE
+}
+
+enum BlockType {
+  WELCOME
+  CONTACT
+  SINGLE_CHOICE
+  MULTI_CHOICE
+  MEDIA_CHOICE
+  YES_NO
+  DROPDOWN
+  RATING
+  RANKING
+  SCALE
+  SLIDER
+  TEXT
+}
+
+enum ResponseStatus {
+  IN_PROGRESS
+  COMPLETED
+  PARTIAL
+  TIMED_OUT
+}
+
+enum JobStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+enum TelegramConnectionStatus {
+  PENDING
+  ACTIVE
+  DISCONNECTED
+}
+
+enum AiProvider {
+  OPENAI
+  OPENROUTER
+}
+
+model User {
+  id                    String               @id @default(cuid())
+  email                 String               @unique
+  passwordHash          String?
+  displayName           String?
+  role                  UserRole             @default(MEMBER)
+  status                UserStatus           @default(INVITED)
+  forcePasswordChange   Boolean              @default(true)
+  deletedAt             DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  acceptedInvitation    Invitation?          @relation("CreatedUser")
+  foldersCreated        Folder[]             @relation("FolderCreatedBy")
+  invitationsSent       Invitation[]         @relation("InvitedBy")
+  ownedSurveys          Survey[]             @relation("SurveyOwner")
+  permissions           SurveyPermission[]
+  sessions              Session[]
+  telegramConnection    TelegramConnection?
+  telegramNotifications NotificationConfig[] @relation("NotificationOwner")
+  versionsCreated       SurveyVersion[]      @relation("VersionCreatedBy")
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model Invitation {
+  id            String    @id @default(cuid())
+  email         String
+  tokenHash     String    @unique
+  invitedById   String
+  invitedBy     User      @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+  createdUserId String?   @unique
+  createdUser   User?     @relation("CreatedUser", fields: [createdUserId], references: [id], onDelete: SetNull)
+  expiresAt     DateTime
+  acceptedAt    DateTime?
+  revokedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([email])
+}
+
+model Folder {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  sortOrder   Int      @default(0)
+  createdById String
+  createdBy   User     @relation("FolderCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  surveys     Survey[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Survey {
+  id                 String                @id @default(cuid())
+  title              String                @default("Новый опрос")
+  description        String                @default("")
+  ownerId            String
+  owner              User                  @relation("SurveyOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  currentVersionId   String?               @unique
+  currentVersion     SurveyVersion?        @relation("CurrentSurveyVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  publishedVersionId String?               @unique
+  publishedVersion   SurveyVersion?        @relation("PublishedSurveyVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
+  folderId           String?
+  folder             Folder?               @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  folderKey          SurveyFolderKey       @default(MY_SURVEYS)
+  lifecycleStatus    SurveyLifecycleStatus @default(DRAFT)
+  publicSlug         String                @unique
+  language           String                @default("ru")
+  autoScrollEnabled  Boolean               @default(true)
+  timerEnabled       Boolean               @default(false)
+  timerSeconds       Int?
+  historyEnabled     Boolean               @default(true)
+  publishedAt        DateTime?
+  archivedAt         DateTime?
+  purgeAt            DateTime?
+  lastVersionNumber  Int                   @default(0)
+  completionMessage  String                @default("Спасибо за опрос!")
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  aiAnalysisRule     AiAnalysisRule?
+  mediaAssets        MediaAsset[]
+  notificationConfig NotificationConfig?
+  permissions        SurveyPermission[]
+  responses          ResponseSession[]
+  retakeTokens       ResponseRetakeToken[]
+  versions           SurveyVersion[]       @relation("SurveyVersions")
+
+  @@index([ownerId])
+  @@index([lifecycleStatus, folderKey])
+}
+
+model SurveyVersion {
+  id            String            @id @default(cuid())
+  surveyId      String
+  survey        Survey            @relation("SurveyVersions", fields: [surveyId], references: [id], onDelete: Cascade)
+  versionNumber Int
+  title         String
+  description   String            @default("")
+  schema        Json
+  changeSummary String?
+  createdById   String
+  createdBy     User              @relation("VersionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt     DateTime          @default(now())
+  currentFor    Survey?           @relation("CurrentSurveyVersion")
+  publishedFor  Survey?           @relation("PublishedSurveyVersion")
+  responses     ResponseSession[]
+
+  @@unique([surveyId, versionNumber])
+  @@index([surveyId, createdAt])
+}
+
+model SurveyPermission {
+  id         String   @id @default(cuid())
+  surveyId   String
+  survey     Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canView    Boolean  @default(false)
+  canCreate  Boolean  @default(false)
+  canEdit    Boolean  @default(false)
+  canDelete  Boolean  @default(false)
+  canResults Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([surveyId, userId])
+}
+
+model NotificationConfig {
+  id                       String   @id @default(cuid())
+  surveyId                 String   @unique
+  survey                   Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  telegramEnabled          Boolean  @default(false)
+  telegramRecipientUserId  String?
+  telegramRecipientUserIds String[] @default([])
+  telegramRecipient        User?    @relation("NotificationOwner", fields: [telegramRecipientUserId], references: [id], onDelete: SetNull)
+  telegramChatIdOverride   String?
+  telegramChatIdOverrides  String[] @default([])
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+}
+
+model TelegramConnection {
+  id          String                   @id @default(cuid())
+  userId      String                   @unique
+  user        User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  username    String?
+  chatId      String?
+  status      TelegramConnectionStatus @default(PENDING)
+  activatedAt DateTime?
+  lastCheckAt DateTime?
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+}
+
+model AiAnalysisRule {
+  id              String     @id @default(cuid())
+  surveyId        String     @unique
+  survey          Survey     @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  enabled         Boolean    @default(false)
+  provider        AiProvider @default(OPENAI)
+  prompt          String     @db.Text
+  model           String?
+  apiKeyEncrypted String?    @db.Text
+  apiKeyLastFour  String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+model ResponseSession {
+  id              String                @id @default(cuid())
+  surveyId        String
+  survey          Survey                @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  surveyVersionId String?
+  surveyVersion   SurveyVersion?        @relation(fields: [surveyVersionId], references: [id], onDelete: SetNull)
+  respondentKey   String
+  status          ResponseStatus        @default(IN_PROGRESS)
+  startedAt       DateTime              @default(now())
+  timerStartedAt  DateTime?
+  updatedAt       DateTime              @updatedAt
+  completedAt     DateTime?
+  timedOutAt      DateTime?
+  lastBlockId     String?
+  respondentData  Json?
+  totalScore      Int                   @default(0)
+  aiNote          String?
+  aiStatus        JobStatus             @default(PENDING)
+  telegramStatus  JobStatus             @default(PENDING)
+  answers         ResponseAnswer[]
+  retakeTokens    ResponseRetakeToken[]
+
+  @@index([surveyId, status, startedAt])
+  @@index([respondentKey])
+}
+
+model ResponseRetakeToken {
+  id                String           @id @default(cuid())
+  surveyId          String
+  survey            Survey           @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  responseSessionId String?
+  responseSession   ResponseSession? @relation(fields: [responseSessionId], references: [id], onDelete: SetNull)
+  tokenHash         String           @unique
+  expiresAt         DateTime
+  usedAt            DateTime?
+  createdAt         DateTime         @default(now())
+
+  @@index([surveyId, expiresAt])
+  @@index([responseSessionId])
+}
+
+model ResponseAnswer {
+  id        String          @id @default(cuid())
+  sessionId String
+  session   ResponseSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  blockId   String
+  blockType BlockType
+  prompt    String
+  value     Json
+  rawValue  Json?
+  score     Int             @default(0)
+  sortOrder Int             @default(0)
+  createdAt DateTime        @default(now())
+
+  @@unique([sessionId, blockId])
+  @@index([sessionId, sortOrder])
+}
+
+model MediaAsset {
+  id           String   @id @default(cuid())
+  surveyId     String
+  survey       Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  originalName String
+  filename     String
+  mimeType     String
+  byteSize     Int
+  storagePath  String   @unique
+  createdAt    DateTime @default(now())
+
+  @@index([surveyId, createdAt])
+}
