@@ -115,6 +115,7 @@ describe("PublicRuntime mobile interactions", () => {
   const originalRequestAnimationFrame = window.requestAnimationFrame;
   const originalScrollTo = window.scrollTo;
   const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+  const originalVisualViewport = window.visualViewport;
 
   beforeEach(() => {
     document.body.innerHTML = "";
@@ -173,16 +174,16 @@ describe("PublicRuntime mobile interactions", () => {
         };
       }
 
-      if (className.includes("space-y-4") && text.includes("Второй блок")) {
+      if (className.includes("space-y-4") && (text.includes("Второй блок") || text.includes("Второй текстовый вопрос"))) {
         return {
-          bottom: 320,
-          height: 220,
+          bottom: 1600,
+          height: 1600,
           left: 0,
           right: 375,
-          top: 120,
+          top: 1000,
           width: 375,
           x: 0,
-          y: 120,
+          y: 1000,
           toJSON() {
             return {};
           },
@@ -208,6 +209,7 @@ describe("PublicRuntime mobile interactions", () => {
   afterEach(() => {
     HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
     HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    Object.defineProperty(window, "visualViewport", { value: originalVisualViewport, configurable: true });
     Object.defineProperty(window, "innerWidth", { value: originalInnerWidth, configurable: true });
     window.requestAnimationFrame = originalRequestAnimationFrame;
     window.scrollTo = originalScrollTo;
@@ -688,6 +690,15 @@ describe("PublicRuntime mobile interactions", () => {
   });
 
   it("scrolls to the active runtime top on mobile after advancing without scrollIntoView", async () => {
+    Object.defineProperty(window, "visualViewport", {
+      value: {
+        offsetTop: 48,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      },
+      configurable: true,
+    });
+
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
@@ -708,13 +719,43 @@ describe("PublicRuntime mobile interactions", () => {
     await waitForCondition(() => scrollToMock.mock.calls.length > 0);
     const lastCall = scrollToMock.mock.calls.at(-1) as [{ top: number; behavior: ScrollBehavior }] | undefined;
     expect(lastCall?.[0].behavior).toBe("auto");
-    expect(lastCall?.[0].top).toBe(944);
+    expect(lastCall?.[0].top).toBe(920);
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
 
     root.unmount();
   });
 
   it("scrolls to the top on mobile after advancing from a text question", async () => {
+    let postActiveElementTag = "";
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? "GET").toUpperCase();
+
+        if (url.includes("/api/responses/")) {
+          if (method === "GET") {
+            return createResponse({
+              status: "IN_PROGRESS",
+              session: { id: "session-1" },
+              answers: [],
+              lastBlockId: null,
+            });
+          }
+
+          if (method === "POST") {
+            postActiveElementTag = document.activeElement?.tagName ?? "";
+            return createResponse({
+              answer: { nextBlockId: "block-2" },
+            });
+          }
+        }
+
+        return createResponse({ error: "Unexpected request" }, 500);
+      }),
+    );
+
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
@@ -764,6 +805,7 @@ describe("PublicRuntime mobile interactions", () => {
     expect(textarea).not.toBeNull();
 
     await act(async () => {
+      textarea!.focus();
       textarea!.value = "Тестовый ответ";
       textarea!.dispatchEvent(new Event("input", { bubbles: true }));
       await Promise.resolve();
@@ -772,16 +814,25 @@ describe("PublicRuntime mobile interactions", () => {
     const continueButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Продолжить")) as HTMLButtonElement | undefined;
     expect(continueButton).toBeDefined();
 
+    const scrollCallsBeforeSubmit = scrollToMock.mock.calls.length;
+
     await act(async () => {
       continueButton!.click();
       await Promise.resolve();
     });
 
-    await waitForCondition(() => scrollToMock.mock.calls.length > 0);
-    const lastCall = scrollToMock.mock.calls.at(-1) as [{ top: number; behavior: ScrollBehavior }] | undefined;
+    await waitForCondition(
+      () =>
+        container.textContent?.includes("Второй текстовый вопрос") === true &&
+        scrollToMock.mock.calls.slice(scrollCallsBeforeSubmit).some((call) => call[0]?.top === 920),
+    );
+    const lastCall = scrollToMock.mock.calls
+      .slice(scrollCallsBeforeSubmit)
+      .findLast((call) => call[0]?.top === 920) as [{ top: number; behavior: ScrollBehavior }] | undefined;
     expect(lastCall?.[0].behavior).toBe("auto");
-    expect(lastCall?.[0].top).toBe(944);
+    expect(lastCall?.[0].top).toBe(920);
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
+    expect(postActiveElementTag).not.toBe("TEXTAREA");
     expect(container.textContent).toContain("Второй текстовый вопрос");
 
     root.unmount();

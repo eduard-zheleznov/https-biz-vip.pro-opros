@@ -200,8 +200,8 @@ const PHONE_COUNTRIES: PhoneCountry[] = [
   { id: "me", label: "Черногория", dialCode: "+382", digits: 8, flag: "🇲🇪" },
 ];
 
-const MOBILE_RUNTIME_TOP_OFFSET = 56;
-const MOBILE_SCROLL_RETRY_DELAYS = [80, 180, 360, 700, 1100] as const;
+const MOBILE_RUNTIME_TOP_OFFSET = 80;
+const MOBILE_SCROLL_RETRY_DELAYS = [80, 180, 360, 700, 1100, 1800, 2600] as const;
 
 const RECORDER_MIME_TYPES = [
   "audio/mp4;codecs=mp4a.40.2",
@@ -1211,6 +1211,8 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
 
     shouldScrollAfterBlockChangeRef.current = false;
     scrollToRuntimeTop();
+    // scrollToRuntimeTop reads live refs and viewport state only when the block id changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentBlockId]);
 
   useEffect(() => {
@@ -1315,6 +1317,44 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
     }
   }
 
+  function blurActiveElementOnMobile() {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    if (window.innerWidth >= 640 || !(document.activeElement instanceof HTMLElement)) {
+      return false;
+    }
+
+    if (document.activeElement === document.body) {
+      return false;
+    }
+
+    document.activeElement.blur();
+    return true;
+  }
+
+  async function settleMobileInputBeforeTransition() {
+    if (typeof window === "undefined" || window.innerWidth >= 640) {
+      return;
+    }
+
+    const blurred = blurActiveElementOnMobile();
+    if (!blurred) {
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => resolve());
+      });
+    });
+
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 180);
+    });
+  }
+
   function scrollToRuntimeTop(behavior: ScrollBehavior = "smooth") {
     if (typeof window === "undefined") {
       return;
@@ -1325,8 +1365,7 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
       const target = isMobile
         ? runtimeRef.current ?? currentBlockSectionRef.current
         : currentBlockSectionRef.current ?? runtimeRef.current;
-      const visualViewportOffset = isMobile ? (window.visualViewport?.offsetTop ?? 0) : 0;
-      const targetTop = target ? target.getBoundingClientRect().top + window.scrollY - visualViewportOffset : 0;
+      const targetTop = target ? target.getBoundingClientRect().top + window.scrollY : 0;
       const top = isMobile ? targetTop - MOBILE_RUNTIME_TOP_OFFSET : targetTop;
       const nextBehavior = isMobile ? "auto" : behavior;
 
@@ -1345,9 +1384,7 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
       }
     };
 
-    if (window.innerWidth < 640 && document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
+    blurActiveElementOnMobile();
 
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
@@ -1817,6 +1854,7 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
   async function submitCurrentAnswer() {
     try {
       setError("");
+      await settleMobileInputBeforeTransition();
 
       const saved = await persistCurrentAnswer();
       if (saved && "terminal" in saved) {
@@ -1844,6 +1882,7 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
   async function submitCurrentAnswerWithValue(nextValue: unknown) {
     try {
       setError("");
+      await settleMobileInputBeforeTransition();
 
       const saved = await persistCurrentAnswer({
         valueOverride: nextValue,

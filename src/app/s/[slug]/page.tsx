@@ -19,7 +19,7 @@ export default async function PublicSurveyPage({
   }
 
   return (
-    <main className="w-full px-5 pb-8 pt-14 sm:px-8 sm:py-8 lg:px-10">
+    <main className="w-full px-5 pb-8 pt-20 sm:px-8 sm:py-8 lg:px-10">
       <PublicRuntime
         surveyId={published.survey.id}
         publicSlug={published.survey.publicSlug}
