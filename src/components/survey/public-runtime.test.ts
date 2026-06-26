@@ -27,6 +27,7 @@ const baseTypography = {
 };
 
 let scrollToMock = vi.fn();
+let scrollIntoViewMock = vi.fn();
 
 function buildSchema(overrides?: Partial<SurveySchema>): SurveySchema {
   return {
@@ -113,6 +114,7 @@ describe("PublicRuntime mobile interactions", () => {
   const originalInnerWidth = window.innerWidth;
   const originalRequestAnimationFrame = window.requestAnimationFrame;
   const originalScrollTo = window.scrollTo;
+  const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
 
   beforeEach(() => {
     document.body.innerHTML = "";
@@ -147,7 +149,9 @@ describe("PublicRuntime mobile interactions", () => {
 
     Object.defineProperty(window, "innerWidth", { value: 375, configurable: true });
     scrollToMock = vi.fn();
+    scrollIntoViewMock = vi.fn();
     window.scrollTo = scrollToMock as typeof window.scrollTo;
+    HTMLElement.prototype.scrollIntoView = scrollIntoViewMock as typeof HTMLElement.prototype.scrollIntoView;
     window.requestAnimationFrame = ((callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 0)) as typeof window.requestAnimationFrame;
     HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
       const className = typeof this.className === "string" ? this.className : "";
@@ -203,6 +207,7 @@ describe("PublicRuntime mobile interactions", () => {
 
   afterEach(() => {
     HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
     Object.defineProperty(window, "innerWidth", { value: originalInnerWidth, configurable: true });
     window.requestAnimationFrame = originalRequestAnimationFrame;
     window.scrollTo = originalScrollTo;
@@ -682,7 +687,7 @@ describe("PublicRuntime mobile interactions", () => {
     root.unmount();
   });
 
-  it("scrolls to the active block section on mobile after advancing", async () => {
+  it("scrolls to the active runtime top on mobile after advancing without scrollIntoView", async () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
@@ -703,7 +708,8 @@ describe("PublicRuntime mobile interactions", () => {
     await waitForCondition(() => scrollToMock.mock.calls.length > 0);
     const lastCall = scrollToMock.mock.calls.at(-1) as [{ top: number; behavior: ScrollBehavior }] | undefined;
     expect(lastCall?.[0].behavior).toBe("auto");
-    expect(lastCall?.[0].top).toBe(0);
+    expect(lastCall?.[0].top).toBe(968);
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
 
     root.unmount();
   });
@@ -774,7 +780,8 @@ describe("PublicRuntime mobile interactions", () => {
     await waitForCondition(() => scrollToMock.mock.calls.length > 0);
     const lastCall = scrollToMock.mock.calls.at(-1) as [{ top: number; behavior: ScrollBehavior }] | undefined;
     expect(lastCall?.[0].behavior).toBe("auto");
-    expect(lastCall?.[0].top).toBe(0);
+    expect(lastCall?.[0].top).toBe(968);
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
     expect(container.textContent).toContain("Второй текстовый вопрос");
 
     root.unmount();

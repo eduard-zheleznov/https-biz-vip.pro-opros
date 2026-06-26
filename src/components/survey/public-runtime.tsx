@@ -200,6 +200,8 @@ const PHONE_COUNTRIES: PhoneCountry[] = [
   { id: "me", label: "Черногория", dialCode: "+382", digits: 8, flag: "🇲🇪" },
 ];
 
+const MOBILE_RUNTIME_TOP_OFFSET = 32;
+
 const RECORDER_MIME_TYPES = [
   "audio/mp4;codecs=mp4a.40.2",
   "audio/mp4",
@@ -1323,12 +1325,9 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
         ? runtimeRef.current ?? currentBlockSectionRef.current
         : currentBlockSectionRef.current ?? runtimeRef.current;
       const visualViewportOffset = isMobile ? (window.visualViewport?.offsetTop ?? 0) : 0;
-      const top = isMobile ? 0 : target ? target.getBoundingClientRect().top + window.scrollY - visualViewportOffset : 0;
+      const targetTop = target ? target.getBoundingClientRect().top + window.scrollY - visualViewportOffset : 0;
+      const top = isMobile ? targetTop - MOBILE_RUNTIME_TOP_OFFSET : targetTop;
       const nextBehavior = isMobile ? "auto" : behavior;
-
-      if (isMobile && target && typeof target.scrollIntoView === "function") {
-        runtimeRef.current?.scrollIntoView({ block: "start", inline: "nearest", behavior: nextBehavior });
-      }
 
       window.scrollTo({
         top: Math.max(0, top),
@@ -1340,8 +1339,8 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
       }
 
       if (isMobile) {
-        document.documentElement.scrollTop = 0;
-        document.body.scrollTop = 0;
+        document.documentElement.scrollTop = Math.max(0, top);
+        document.body.scrollTop = Math.max(0, top);
       }
     };
 
