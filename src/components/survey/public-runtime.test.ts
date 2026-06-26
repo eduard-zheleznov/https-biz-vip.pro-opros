@@ -730,6 +730,7 @@ describe("PublicRuntime mobile interactions", () => {
   it("scrolls to the top on mobile after advancing from a text question", async () => {
     let postActiveElementTag = "";
     const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout");
 
     vi.stubGlobal(
       "fetch",
@@ -837,6 +838,7 @@ describe("PublicRuntime mobile interactions", () => {
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
     expect(postActiveElementTag).not.toBe("TEXTAREA");
     expect(container.textContent).toContain("Второй текстовый вопрос");
+    expect(setTimeoutSpy.mock.calls.some(([, delay]) => delay === 1100)).toBe(true);
 
     const nextTextarea = container.querySelector("textarea") as HTMLTextAreaElement | null;
     expect(nextTextarea).not.toBeNull();

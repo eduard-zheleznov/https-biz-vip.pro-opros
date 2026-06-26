@@ -201,7 +201,7 @@ const PHONE_COUNTRIES: PhoneCountry[] = [
 ];
 
 const MOBILE_RUNTIME_TOP_OFFSET = 32;
-const MOBILE_SCROLL_RETRY_DELAYS = [80, 180, 360] as const;
+const MOBILE_SCROLL_RETRY_DELAYS = [80, 180, 360, 700, 1100, 1800] as const;
 
 const RECORDER_MIME_TYPES = [
   "audio/mp4;codecs=mp4a.40.2",
@@ -1396,6 +1396,16 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
     pendingMobileScrollTimeoutsRef.current = [];
   }
 
+  function isEditableElementFocused() {
+    if (typeof document === "undefined" || !(document.activeElement instanceof HTMLElement)) {
+      return false;
+    }
+
+    return Boolean(
+      document.activeElement.closest('textarea,input,[role="textbox"],[contenteditable="true"],[contenteditable="plaintext-only"]'),
+    );
+  }
+
   function scrollToRuntimeTop(behavior: ScrollBehavior = "smooth") {
     if (typeof window === "undefined") {
       return;
@@ -1407,6 +1417,11 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
 
     const scroll = () => {
       const isMobile = window.innerWidth < 640;
+      if (isMobile && isEditableElementFocused()) {
+        cancelPendingMobileScrollAdjustments();
+        return;
+      }
+
       const target = isMobile
         ? runtimeRef.current ?? currentBlockSectionRef.current
         : currentBlockSectionRef.current ?? runtimeRef.current;
