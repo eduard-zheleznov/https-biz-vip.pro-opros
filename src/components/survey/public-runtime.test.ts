@@ -116,6 +116,7 @@ describe("PublicRuntime mobile interactions", () => {
   const originalScrollTo = window.scrollTo;
   const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
   const originalVisualViewport = window.visualViewport;
+  const originalUserAgent = window.navigator.userAgent;
 
   beforeEach(() => {
     document.body.innerHTML = "";
@@ -210,6 +211,7 @@ describe("PublicRuntime mobile interactions", () => {
     HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
     HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
     Object.defineProperty(window, "visualViewport", { value: originalVisualViewport, configurable: true });
+    Object.defineProperty(window.navigator, "userAgent", { value: originalUserAgent, configurable: true });
     Object.defineProperty(window, "innerWidth", { value: originalInnerWidth, configurable: true });
     window.requestAnimationFrame = originalRequestAnimationFrame;
     window.scrollTo = originalScrollTo;
@@ -725,6 +727,45 @@ describe("PublicRuntime mobile interactions", () => {
     expect(visualViewportAddEventListener).not.toHaveBeenCalled();
     const runtime = container.querySelector(".survey-runtime") as HTMLElement | null;
     expect(runtime?.style.getPropertyValue("--survey-mobile-browser-top-inset")).toBe("48px");
+
+    root.unmount();
+  });
+
+  it("keeps the next question below the Chrome iOS toolbar when visualViewport omits the top offset", async () => {
+    Object.defineProperty(window.navigator, "userAgent", {
+      value:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/125.0.6422.80 Mobile/15E148 Safari/604.1",
+      configurable: true,
+    });
+    Object.defineProperty(window, "visualViewport", {
+      value: {
+        offsetTop: 0,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      },
+      configurable: true,
+    });
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(React.createElement(PublicRuntime, { surveyId: "survey-1", publicSlug: "survey-1", schema: buildSchema() }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const continueButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Продолжить")) as HTMLButtonElement | undefined;
+    expect(continueButton).toBeDefined();
+
+    await act(async () => {
+      continueButton!.click();
+    });
+
+    await waitForCondition(() => scrollToMock.mock.calls.length > 0);
+    const runtime = container.querySelector(".survey-runtime") as HTMLElement | null;
+    expect(runtime?.style.getPropertyValue("--survey-mobile-browser-top-inset")).toBe("96px");
 
     root.unmount();
   });

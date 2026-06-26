@@ -203,6 +203,7 @@ const PHONE_COUNTRIES: PhoneCountry[] = [
 const MOBILE_RUNTIME_TOP_OFFSET = 32;
 const MOBILE_SCROLL_RETRY_DELAYS = [80, 180, 360, 700, 1100, 1800] as const;
 const MOBILE_BROWSER_TOP_INSET_MAX = 140;
+const MOBILE_CHROME_IOS_TOP_INSET_FALLBACK = 96;
 
 const RECORDER_MIME_TYPES = [
   "audio/mp4;codecs=mp4a.40.2",
@@ -1413,12 +1414,24 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
     );
   }
 
+  function isChromeOnIOS() {
+    if (typeof navigator === "undefined") {
+      return false;
+    }
+
+    return /\bCriOS\//.test(navigator.userAgent);
+  }
+
   function readMobileBrowserTopInset() {
     if (typeof window === "undefined" || window.innerWidth >= 640) {
       return 0;
     }
 
-    return Math.min(Math.max(Math.round(window.visualViewport?.offsetTop ?? 0), 0), MOBILE_BROWSER_TOP_INSET_MAX);
+    const reportedInset = Math.max(Math.round(window.visualViewport?.offsetTop ?? 0), 0);
+    // Chrome on iOS can keep the top toolbar over the page while reporting no visualViewport top offset.
+    const fallbackInset = reportedInset === 0 && isChromeOnIOS() ? MOBILE_CHROME_IOS_TOP_INSET_FALLBACK : 0;
+
+    return Math.min(Math.max(reportedInset || fallbackInset, 0), MOBILE_BROWSER_TOP_INSET_MAX);
   }
 
   function applyMobileBrowserTopInset() {
