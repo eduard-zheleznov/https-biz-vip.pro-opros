@@ -5,6 +5,7 @@ import type React from "react";
 import { useRef } from "react";
 
 import { Textarea } from "@/components/ui/textarea";
+import { MobileTextOverrideButton } from "@/components/admin/mobile-text-override-button";
 import { RICH_TEXT_COLOR_PALETTE, type RichTextColorId } from "@/lib/rich-text";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +16,11 @@ const RichTextTextareaControl = Textarea as unknown as React.ForwardRefExoticCom
 type RichTextTextareaProps = Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange" | "value"> & {
   value: string;
   onChange: (value: string) => void;
+  mobileTextOverride?: {
+    label: string;
+    value?: string | null;
+    onChange: (value: string) => void;
+  };
 };
 
 function applyWrappedToken(value: string, selectionStart: number, selectionEnd: number, openingToken: string, closingToken: string) {
@@ -46,7 +52,7 @@ function applyWrappedToken(value: string, selectionStart: number, selectionEnd: 
   };
 }
 
-export function RichTextTextarea({ value, onChange, className, rows = 3, ...props }: RichTextTextareaProps) {
+export function RichTextTextarea({ value, onChange, mobileTextOverride, className, rows = 3, ...props }: RichTextTextareaProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const applyFormatting = (openingToken: string, closingToken: string) => {
@@ -94,6 +100,17 @@ export function RichTextTextarea({ value, onChange, className, rows = 3, ...prop
             aria-label={`Применить цвет: ${color.label}`}
           />
         ))}
+        {mobileTextOverride ? (
+          <>
+            <span className="mx-1 h-5 w-px bg-slate-200" aria-hidden="true" />
+            <MobileTextOverrideButton
+              label={mobileTextOverride.label}
+              sourceValue={value}
+              value={mobileTextOverride.value}
+              onChange={mobileTextOverride.onChange}
+            />
+          </>
+        ) : null}
       </div>
       <RichTextTextareaControl
         ref={textareaRef}

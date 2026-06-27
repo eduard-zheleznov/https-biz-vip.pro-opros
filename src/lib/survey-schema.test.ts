@@ -161,6 +161,32 @@ describe("survey schema engine", () => {
     expect(block.additionalInfoItems).toEqual([]);
   });
 
+  it("normalizes mobile-only text overrides without requiring a database migration", () => {
+    const rawBlock = {
+      ...createBlock("TEXT", 1),
+      mobileTextOverrides: {
+        title: "Мобильный\nзаголовок",
+        description: " ",
+        unknown: "ignored",
+      },
+      placeholder: "Ответ",
+    } as ReturnType<typeof createBlock> & {
+      mobileTextOverrides: Record<string, string>;
+      placeholder: string;
+    };
+
+    const schema = normalizeSurveySchema({
+      title: "Mobile text",
+      description: "",
+      settings: createDefaultSurveySchema("Mobile text").settings,
+      blocks: [rawBlock],
+    });
+
+    expect((schema.blocks[0] as { mobileTextOverrides?: Record<string, string> } | undefined)?.mobileTextOverrides).toEqual({
+      title: "Мобильный\nзаголовок",
+    });
+  });
+
   it("requires text answers to reach configured minimum length", () => {
     const text = createBlock("TEXT", 1);
 

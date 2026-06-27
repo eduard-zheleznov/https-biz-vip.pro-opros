@@ -38,6 +38,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { RichTextTextarea } from "@/components/admin/rich-text-textarea";
+import { MobileTextOverrideButton } from "@/components/admin/mobile-text-override-button";
 import { appAbsoluteUrl, withBasePath } from "@/lib/base-path";
 import { normalizePublicSlugInput } from "@/lib/public-slug";
 import {
@@ -60,6 +61,8 @@ import type {
   CombinedInputBlock,
   CombinedInputBlockType,
   ContactField,
+  MobileTextOverrideKey,
+  MobileTextOverrides,
   SurveyBlock,
   SurveySchema,
   SurveyBlockType,
@@ -128,6 +131,32 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{children}</p>;
 }
 
+function readMobileTextOverride(
+  source: { mobileTextOverrides?: MobileTextOverrides },
+  key: MobileTextOverrideKey,
+) {
+  return source.mobileTextOverrides?.[key] ?? "";
+}
+
+function writeMobileTextOverride<T extends { mobileTextOverrides?: MobileTextOverrides }>(
+  source: T,
+  key: MobileTextOverrideKey,
+  value: string,
+): T {
+  const nextOverrides = { ...(source.mobileTextOverrides ?? {}) };
+
+  if (value.trim()) {
+    nextOverrides[key] = value;
+  } else {
+    delete nextOverrides[key];
+  }
+
+  return {
+    ...source,
+    mobileTextOverrides: nextOverrides,
+  };
+}
+
 function createDraftOption(nextIndex: number): ChoiceOption {
   const generatedId =
     globalThis.crypto?.randomUUID?.() ??
@@ -137,6 +166,7 @@ function createDraftOption(nextIndex: number): ChoiceOption {
     id: generatedId,
     label: `Вариант ${nextIndex}`,
     description: "",
+    mobileTextOverrides: {},
     score: 0,
     nextBlockId: null,
     mediaAssetId: null,
@@ -153,6 +183,7 @@ function createDraftAdditionalInfoItem(nextIndex: number): AdditionalInfoItem {
     id: generatedId,
     label: `Пункт ${nextIndex}`,
     description: "",
+    mobileTextOverrides: {},
   };
 }
 
@@ -236,6 +267,7 @@ function buildContactFields(fields: ContactField[]): ContactField[] {
       id: template.id,
       label: field?.label || template.label,
       placeholder: field?.placeholder ?? template.placeholder,
+      mobileTextOverrides: field?.mobileTextOverrides ?? {},
       required: field?.required ?? template.required,
       enabled: field?.enabled ?? Boolean(field),
     };
@@ -315,6 +347,11 @@ function SortableOption({
           <RichTextTextarea
             value={option.label}
             onChange={(nextValue) => onChange({ ...option, label: nextValue })}
+            mobileTextOverride={{
+              label: "Текст варианта",
+              value: readMobileTextOverride(option, "label"),
+              onChange: (nextValue) => onChange(writeMobileTextOverride(option, "label", nextValue)),
+            }}
             placeholder="Текст варианта"
             rows={2}
             className="min-h-[72px]"
@@ -346,6 +383,11 @@ function SortableOption({
         <RichTextTextarea
           value={option.description}
           onChange={(nextValue) => onChange({ ...option, description: nextValue })}
+          mobileTextOverride={{
+            label: "Подпись варианта",
+            value: readMobileTextOverride(option, "description"),
+            onChange: (nextValue) => onChange(writeMobileTextOverride(option, "description", nextValue)),
+          }}
           placeholder="Подпись или пояснение"
           rows={2}
           className="min-h-[72px]"
@@ -424,11 +466,19 @@ function AdditionalInfoEditor({
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
           <SectionLabel>Кнопка</SectionLabel>
-          <Input
-            value={item.label}
-            onChange={(event) => onChange({ ...item, label: event.target.value })}
-            placeholder={`Пункт ${itemIndex + 1}`}
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              value={item.label}
+              onChange={(event) => onChange({ ...item, label: event.target.value })}
+              placeholder={`Пункт ${itemIndex + 1}`}
+            />
+            <MobileTextOverrideButton
+              label="Кнопка доп. информации"
+              sourceValue={item.label}
+              value={readMobileTextOverride(item, "label")}
+              onChange={(nextValue) => onChange(writeMobileTextOverride(item, "label", nextValue))}
+            />
+          </div>
         </div>
         <div className="mt-6 flex flex-wrap items-center gap-2">
           <Button
@@ -466,6 +516,11 @@ function AdditionalInfoEditor({
         <RichTextTextarea
           value={item.description}
           onChange={(nextValue) => onChange({ ...item, description: nextValue })}
+          mobileTextOverride={{
+            label: "Описание доп. информации",
+            value: readMobileTextOverride(item, "description"),
+            onChange: (nextValue) => onChange(writeMobileTextOverride(item, "description", nextValue)),
+          }}
           rows={4}
           placeholder="Текст, который увидит респондент после нажатия на кнопку"
         />
@@ -682,6 +737,11 @@ function SortableBlock({
             <RichTextTextarea
               value={block.title}
               onChange={(nextValue) => onChange({ ...block, title: nextValue })}
+              mobileTextOverride={{
+                label: "Заголовок",
+                value: readMobileTextOverride(block, "title"),
+                onChange: (nextValue) => onChange(writeMobileTextOverride(block, "title", nextValue)),
+              }}
               rows={6}
               className="min-h-[190px]"
             />
@@ -718,6 +778,11 @@ function SortableBlock({
             <RichTextTextarea
               value={block.description}
               onChange={(nextValue) => onChange({ ...block, description: nextValue })}
+              mobileTextOverride={{
+                label: "Описание",
+                value: readMobileTextOverride(block, "description"),
+                onChange: (nextValue) => onChange(writeMobileTextOverride(block, "description", nextValue)),
+              }}
               rows={3}
             />
           </div>
@@ -727,6 +792,11 @@ function SortableBlock({
             <RichTextTextarea
               value={block.questionHint}
               onChange={(nextValue) => onChange({ ...block, questionHint: nextValue })}
+              mobileTextOverride={{
+                label: "Пояснение к вопросу",
+                value: readMobileTextOverride(block, "questionHint"),
+                onChange: (nextValue) => onChange(writeMobileTextOverride(block, "questionHint", nextValue)),
+              }}
               rows={3}
               placeholder="Если заполнить, рядом с заголовком появится иконка информации с подсказкой."
             />
@@ -939,6 +1009,11 @@ function SortableBlock({
               <RichTextTextarea
                 value={block.ctaLabel}
                 onChange={(nextValue) => onChange({ ...block, ctaLabel: nextValue })}
+                mobileTextOverride={{
+                  label: "Кнопка",
+                  value: readMobileTextOverride(block, "ctaLabel"),
+                  onChange: (nextValue) => onChange(writeMobileTextOverride(block, "ctaLabel", nextValue)),
+                }}
                 rows={1}
                 className="min-h-[48px]"
               />
@@ -964,17 +1039,30 @@ function SortableBlock({
                       "Включает или скрывает это поле в публичном опросе."
                     }
                   />
-                  <Input
-                    value={field.label}
-                    disabled={!field.enabled}
-                    onChange={(event) => {
-                      const nextFields = contactFields.map((entry) =>
-                        entry.id === field.id ? { ...entry, label: event.target.value } : entry,
-                      );
-                      onChange({ ...block, fields: nextFields });
-                    }}
-                    placeholder="Название поля"
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={field.label}
+                      disabled={!field.enabled}
+                      onChange={(event) => {
+                        const nextFields = contactFields.map((entry) =>
+                          entry.id === field.id ? { ...entry, label: event.target.value } : entry,
+                        );
+                        onChange({ ...block, fields: nextFields });
+                      }}
+                      placeholder="Название поля"
+                    />
+                    <MobileTextOverrideButton
+                      label={`Поле контакта: ${field.label}`}
+                      sourceValue={field.label}
+                      value={readMobileTextOverride(field, "label")}
+                      onChange={(nextValue) => {
+                        const nextFields = contactFields.map((entry) =>
+                          entry.id === field.id ? writeMobileTextOverride(entry, "label", nextValue) : entry,
+                        );
+                        onChange({ ...block, fields: nextFields });
+                      }}
+                    />
+                  </div>
                   <Input
                     value={field.placeholder}
                     disabled={!field.enabled}
@@ -1087,12 +1175,22 @@ function SortableBlock({
               <RichTextTextarea
                 value={answerBlock.yesLabel}
                 onChange={(nextValue) => updateAnswerBlock({ ...answerBlock, yesLabel: nextValue })}
+                mobileTextOverride={{
+                  label: "Ответ «Да»",
+                  value: readMobileTextOverride(answerBlock, "yesLabel"),
+                  onChange: (nextValue) => updateAnswerBlock(writeMobileTextOverride(answerBlock, "yesLabel", nextValue)),
+                }}
                 rows={1}
                 className="min-h-[48px]"
               />
               <RichTextTextarea
                 value={answerBlock.noLabel}
                 onChange={(nextValue) => updateAnswerBlock({ ...answerBlock, noLabel: nextValue })}
+                mobileTextOverride={{
+                  label: "Ответ «Нет»",
+                  value: readMobileTextOverride(answerBlock, "noLabel"),
+                  onChange: (nextValue) => updateAnswerBlock(writeMobileTextOverride(answerBlock, "noLabel", nextValue)),
+                }}
                 rows={1}
                 className="min-h-[48px]"
               />
@@ -1160,6 +1258,11 @@ function SortableBlock({
                 <RichTextTextarea
                   value={answerBlock.minLabel}
                   onChange={(nextValue) => updateAnswerBlock({ ...answerBlock, minLabel: nextValue })}
+                  mobileTextOverride={{
+                    label: "Подпись слева",
+                    value: readMobileTextOverride(answerBlock, "minLabel"),
+                    onChange: (nextValue) => updateAnswerBlock(writeMobileTextOverride(answerBlock, "minLabel", nextValue)),
+                  }}
                   rows={1}
                   className="min-h-[48px]"
                 />
@@ -1169,6 +1272,11 @@ function SortableBlock({
                 <RichTextTextarea
                   value={answerBlock.maxLabel}
                   onChange={(nextValue) => updateAnswerBlock({ ...answerBlock, maxLabel: nextValue })}
+                  mobileTextOverride={{
+                    label: "Подпись справа",
+                    value: readMobileTextOverride(answerBlock, "maxLabel"),
+                    onChange: (nextValue) => updateAnswerBlock(writeMobileTextOverride(answerBlock, "maxLabel", nextValue)),
+                  }}
                   rows={1}
                   className="min-h-[48px]"
                 />
@@ -1207,6 +1315,11 @@ function SortableBlock({
                 <RichTextTextarea
                   value={answerBlock.minLabel}
                   onChange={(nextValue) => updateAnswerBlock({ ...answerBlock, minLabel: nextValue })}
+                  mobileTextOverride={{
+                    label: "Подпись слева",
+                    value: readMobileTextOverride(answerBlock, "minLabel"),
+                    onChange: (nextValue) => updateAnswerBlock(writeMobileTextOverride(answerBlock, "minLabel", nextValue)),
+                  }}
                   rows={1}
                   className="min-h-[48px]"
                 />
@@ -1216,6 +1329,11 @@ function SortableBlock({
                 <RichTextTextarea
                   value={answerBlock.maxLabel}
                   onChange={(nextValue) => updateAnswerBlock({ ...answerBlock, maxLabel: nextValue })}
+                  mobileTextOverride={{
+                    label: "Подпись справа",
+                    value: readMobileTextOverride(answerBlock, "maxLabel"),
+                    onChange: (nextValue) => updateAnswerBlock(writeMobileTextOverride(answerBlock, "maxLabel", nextValue)),
+                  }}
                   rows={1}
                   className="min-h-[48px]"
                 />
@@ -1254,6 +1372,11 @@ function SortableBlock({
                 <RichTextTextarea
                   value={answerBlock.minLabel}
                   onChange={(nextValue) => updateAnswerBlock({ ...answerBlock, minLabel: nextValue })}
+                  mobileTextOverride={{
+                    label: "Подпись слева",
+                    value: readMobileTextOverride(answerBlock, "minLabel"),
+                    onChange: (nextValue) => updateAnswerBlock(writeMobileTextOverride(answerBlock, "minLabel", nextValue)),
+                  }}
                   rows={1}
                   className="min-h-[48px]"
                 />
@@ -1263,6 +1386,11 @@ function SortableBlock({
                 <RichTextTextarea
                   value={answerBlock.maxLabel}
                   onChange={(nextValue) => updateAnswerBlock({ ...answerBlock, maxLabel: nextValue })}
+                  mobileTextOverride={{
+                    label: "Подпись справа",
+                    value: readMobileTextOverride(answerBlock, "maxLabel"),
+                    onChange: (nextValue) => updateAnswerBlock(writeMobileTextOverride(answerBlock, "maxLabel", nextValue)),
+                  }}
                   rows={1}
                   className="min-h-[48px]"
                 />
@@ -1419,11 +1547,19 @@ function SortableBlock({
               />
               {answerBlock.allowOtherOption ? (
                 <>
-                  <Input
-                    value={answerBlock.otherOptionLabel}
-                    onChange={(event) => updateAnswerBlock({ ...answerBlock, otherOptionLabel: event.target.value })}
-                    placeholder="Название пункта"
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={answerBlock.otherOptionLabel}
+                      onChange={(event) => updateAnswerBlock({ ...answerBlock, otherOptionLabel: event.target.value })}
+                      placeholder="Название пункта"
+                    />
+                    <MobileTextOverrideButton
+                      label="Пункт «Другое»"
+                      sourceValue={answerBlock.otherOptionLabel}
+                      value={readMobileTextOverride(answerBlock, "otherOptionLabel")}
+                      onChange={(nextValue) => updateAnswerBlock(writeMobileTextOverride(answerBlock, "otherOptionLabel", nextValue))}
+                    />
+                  </div>
                   <Input
                     value={answerBlock.otherPlaceholder}
                     onChange={(event) => updateAnswerBlock({ ...answerBlock, otherPlaceholder: event.target.value })}

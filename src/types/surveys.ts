@@ -24,7 +24,26 @@ export interface AdditionalInfoItem {
   id: string;
   label: string;
   description: string;
+  mobileTextOverrides?: MobileTextOverrides;
 }
+
+export type MobileTextOverrideKey =
+  | "title"
+  | "description"
+  | "questionHint"
+  | "label"
+  | "ctaLabel"
+  | "submitLabel"
+  | "yesLabel"
+  | "noLabel"
+  | "minLabel"
+  | "maxLabel"
+  | "placeholder"
+  | "textPlaceholder"
+  | "otherOptionLabel"
+  | "otherPlaceholder";
+
+export type MobileTextOverrides = Partial<Record<MobileTextOverrideKey, string>>;
 
 export interface BaseSurveyBlock {
   id: string;
@@ -33,6 +52,7 @@ export interface BaseSurveyBlock {
   title: string;
   description: string;
   questionHint: string;
+  mobileTextOverrides?: MobileTextOverrides;
   resultLabelOverride?: string | null;
   required: boolean;
   nextBlockId: string | null;
@@ -47,6 +67,7 @@ export interface ChoiceOption {
   id: string;
   label: string;
   description: string;
+  mobileTextOverrides?: MobileTextOverrides;
   score: number;
   nextBlockId: string | null;
   mediaAssetId?: string | null;
@@ -77,6 +98,7 @@ export interface ContactField {
   id: ContactFieldKey;
   label: string;
   placeholder: string;
+  mobileTextOverrides?: MobileTextOverrides;
   required: boolean;
   enabled: boolean;
 }

@@ -30,6 +30,7 @@ import type {
   CombinedBlock,
   ContactBlock,
   DropdownBlock,
+  MobileTextOverrideKey,
   RankingBlock,
   SurveyBlock,
   SurveySchema,
@@ -128,6 +129,30 @@ function wrapTextStyle(): CSSProperties {
     wordBreak: "normal",
     hyphens: "auto",
   };
+}
+
+function getMobileTextOverride(
+  source: { mobileTextOverrides?: Partial<Record<MobileTextOverrideKey, string>> } | null | undefined,
+  key: MobileTextOverrideKey,
+) {
+  const value = source?.mobileTextOverrides?.[key];
+
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function renderResponsiveRichText(value: string, mobileValue: string | null | undefined) {
+  if (!mobileValue) {
+    return renderRichText(value);
+  }
+
+  return [
+    <span key="mobile" className="sm:hidden">
+      {renderRichText(mobileValue)}
+    </span>,
+    <span key="desktop" className="hidden sm:inline">
+      {renderRichText(value)}
+    </span>,
+  ];
 }
 
 function lineHeight(fontSize: number, ratio = 1.35) {
@@ -1176,6 +1201,7 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
   const shouldScrollAfterBlockChangeRef = useRef(false);
   const pendingMobileScrollTimeoutsRef = useRef<number[]>([]);
   const allowChromeIOSFallbackInsetRef = useRef(false);
+  const suppressMobileBrowserTopInsetRef = useRef(false);
   const finishRef = useRef<(status: FinishStatus, options?: { allowPartialAnswers?: boolean }) => Promise<void>>(
     async () => undefined,
   );
@@ -1268,6 +1294,7 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
       );
 
       if (editableTarget) {
+        suppressMobileBrowserTopInsetRef.current = false;
         cancelPendingMobileScrollAdjustments();
       }
     };
@@ -1376,7 +1403,12 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
   async function settleMobileInputBeforeTransition() {
     if (typeof window === "undefined" || window.innerWidth >= 640) {
       allowChromeIOSFallbackInsetRef.current = false;
+      suppressMobileBrowserTopInsetRef.current = false;
       return;
+    }
+
+    if (currentBlock?.type !== "CONTACT") {
+      suppressMobileBrowserTopInsetRef.current = false;
     }
 
     allowChromeIOSFallbackInsetRef.current = shouldReserveChromeIOSFallbackInsetForTransition();
@@ -1442,6 +1474,10 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
       return 0;
     }
 
+    if (suppressMobileBrowserTopInsetRef.current && !isEditableElementFocused()) {
+      return 0;
+    }
+
     const reportedInset = Math.max(Math.round(window.visualViewport?.offsetTop ?? 0), 0);
     // Chrome on iOS can keep the top toolbar over the page while reporting no visualViewport top offset.
     const fallbackInset =
@@ -1455,6 +1491,10 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
   function applyMobileBrowserTopInset() {
     const inset = readMobileBrowserTopInset();
     runtimeRef.current?.style.setProperty("--survey-mobile-browser-top-inset", `${inset}px`);
+  }
+
+  function resetMobileBrowserTopInset() {
+    runtimeRef.current?.style.setProperty("--survey-mobile-browser-top-inset", "0px");
   }
 
   function scrollToRuntimeTop(behavior: ScrollBehavior = "smooth") {
@@ -1523,10 +1563,19 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
     }
 
     const fromBlockId = options?.pushFromBlockId;
+    const fromBlock = fromBlockId ? schema.blocks.find((block) => block.id === fromBlockId) : null;
     const nextHistory =
       fromBlockId && isKnownBlockId(fromBlockId)
         ? [...blockHistoryRef.current, fromBlockId]
         : blockHistoryRef.current;
+
+    if (fromBlock?.type === "CONTACT") {
+      suppressMobileBrowserTopInsetRef.current = true;
+      allowChromeIOSFallbackInsetRef.current = false;
+      resetMobileBrowserTopInset();
+    } else if (fromBlockId) {
+      suppressMobileBrowserTopInsetRef.current = false;
+    }
 
     blockHistoryRef.current = nextHistory;
     setBlockHistory(nextHistory);
@@ -1550,6 +1599,7 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
     setCurrentBlockId(previousBlockId);
     persistNavigationState(previousBlockId, nextHistory);
     allowChromeIOSFallbackInsetRef.current = false;
+    suppressMobileBrowserTopInsetRef.current = false;
     shouldScrollAfterBlockChangeRef.current = true;
   }
 
@@ -2121,25 +2171,20 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
               <QuestionTitleInteractive
                 key={currentBlock.id}
                 title={currentBlock.title}
+                mobileTitle={getMobileTextOverride(currentBlock, "title")}
                 hint={currentBlock.questionHint}
+                mobileHint={getMobileTextOverride(currentBlock, "questionHint")}
                 structuredMobileTitle={useStructuredMobileQuestionText}
                 textWrapStyle={textWrapStyle}
               />
               {currentBlock.description ? (
-                <>
-                  {useStructuredMobileQuestionText ? (
-                    <StructuredMobileQuestionDescription description={currentBlock.description} />
-                  ) : null}
-                  <p
-                    className={cn(
-                      "survey-description-text max-w-full whitespace-pre-line text-slate-600",
-                      useStructuredMobileQuestionText && "hidden sm:block",
-                    )}
-                    style={textWrapStyle}
-                  >
-                    {renderRichText(currentBlock.description)}
-                  </p>
-                </>
+                <QuestionDescription
+                  description={currentBlock.description}
+                  mobileDescription={getMobileTextOverride(currentBlock, "description")}
+                  structuredMobileDescription={useStructuredMobileQuestionText}
+                  textWrapStyle={textWrapStyle}
+                  className="max-w-full"
+                />
               ) : null}
             </div>
             <div className="flex flex-nowrap gap-2 overflow-x-auto border-t border-slate-100 pt-4 sm:flex-wrap sm:gap-3 sm:overflow-visible sm:pt-6">
@@ -2164,7 +2209,7 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
                 </Button>
               ) : null}
               <Button className="min-w-0 shrink !px-3 !py-2 !text-xs sm:min-w-[180px] sm:!px-5 sm:!py-3 sm:!text-base" onClick={() => startTransition(() => void submitCurrentAnswer())} disabled={primaryButtonDisabled}>
-                {renderRichText(currentBlock.ctaLabel)}
+                {renderResponsiveRichText(currentBlock.ctaLabel, getMobileTextOverride(currentBlock, "ctaLabel"))}
               </Button>
             </div>
             <AdditionalInfoTrayUpwardPopup
@@ -2191,7 +2236,9 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
                   <QuestionTitleInteractive
                     key={currentBlock.id}
                     title={currentBlock.title}
+                    mobileTitle={getMobileTextOverride(currentBlock, "title")}
                     hint={currentBlock.questionHint}
+                    mobileHint={getMobileTextOverride(currentBlock, "questionHint")}
                     structuredMobileTitle={useStructuredMobileQuestionText}
                     textWrapStyle={textWrapStyle}
                   />
@@ -2204,20 +2251,12 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
                 ) : null}
               </div>
               {currentBlock.description ? (
-                <>
-                  {useStructuredMobileQuestionText ? (
-                    <StructuredMobileQuestionDescription description={currentBlock.description} />
-                  ) : null}
-                  <p
-                    className={cn(
-                      "survey-description-text whitespace-pre-line text-slate-600",
-                      useStructuredMobileQuestionText && "hidden sm:block",
-                    )}
-                    style={textWrapStyle}
-                  >
-                    {renderRichText(currentBlock.description)}
-                  </p>
-                </>
+                <QuestionDescription
+                  description={currentBlock.description}
+                  mobileDescription={getMobileTextOverride(currentBlock, "description")}
+                  structuredMobileDescription={useStructuredMobileQuestionText}
+                  textWrapStyle={textWrapStyle}
+                />
               ) : null}
             </div>
 
@@ -2305,24 +2344,39 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
 
 function QuestionTitle({
   title,
+  mobileTitle,
   hint,
+  mobileHint,
   structuredMobileTitle = false,
   textWrapStyle,
 }: {
   title: string;
+  mobileTitle?: string | null;
   hint?: string;
+  mobileHint?: string | null;
   structuredMobileTitle?: boolean;
   textWrapStyle: CSSProperties;
 }) {
   const trimmedHint = hint?.trim() ?? "";
+  const trimmedMobileHint = mobileHint?.trim() ?? "";
+  const hasMobileTitle = Boolean(mobileTitle?.trim());
 
   return (
     <div className="flex max-w-full items-start gap-2">
-      {structuredMobileTitle ? <StructuredMobileQuestionTitle title={title} textWrapStyle={textWrapStyle} /> : null}
+      {hasMobileTitle ? (
+        <h1
+          className="survey-title-text min-w-0 flex-1 whitespace-pre-line break-words font-semibold tracking-tight text-slate-950 sm:hidden"
+          style={textWrapStyle}
+        >
+          {renderRichText(mobileTitle ?? "")}
+        </h1>
+      ) : structuredMobileTitle ? (
+        <StructuredMobileQuestionTitle title={title} textWrapStyle={textWrapStyle} />
+      ) : null}
       <h1
         className={cn(
           "survey-title-text min-w-0 flex-1 whitespace-pre-line break-words font-semibold tracking-tight text-slate-950",
-          structuredMobileTitle && "hidden sm:block",
+          (structuredMobileTitle || hasMobileTitle) && "hidden sm:block",
         )}
         style={textWrapStyle}
       >
@@ -2342,11 +2396,60 @@ function QuestionTitle({
             className="pointer-events-none absolute right-0 top-full z-40 mt-2 hidden w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white p-4 text-sm font-normal leading-6 text-slate-600 shadow-[0_24px_70px_-36px_rgba(15,23,42,0.65)] group-hover:block group-focus-within:block"
             style={textWrapStyle}
           >
-            {renderRichText(trimmedHint)}
+            {renderResponsiveRichText(trimmedHint, trimmedMobileHint)}
           </span>
         </span>
       ) : null}
     </div>
+  );
+}
+
+function QuestionDescription({
+  description,
+  mobileDescription,
+  structuredMobileDescription,
+  textWrapStyle,
+  className,
+}: {
+  description: string;
+  mobileDescription?: string | null;
+  structuredMobileDescription: boolean;
+  textWrapStyle: CSSProperties;
+  className?: string;
+}) {
+  if (mobileDescription?.trim()) {
+    return (
+      <>
+        <p
+          className={cn("survey-description-text whitespace-pre-line text-slate-600 sm:hidden", className)}
+          style={textWrapStyle}
+        >
+          {renderRichText(mobileDescription)}
+        </p>
+        <p
+          className={cn("survey-description-text hidden whitespace-pre-line text-slate-600 sm:block", className)}
+          style={textWrapStyle}
+        >
+          {renderRichText(description)}
+        </p>
+      </>
+    );
+  }
+
+  return (
+    <>
+      {structuredMobileDescription ? <StructuredMobileQuestionDescription description={description} /> : null}
+      <p
+        className={cn(
+          "survey-description-text whitespace-pre-line text-slate-600",
+          structuredMobileDescription && "hidden sm:block",
+          className,
+        )}
+        style={textWrapStyle}
+      >
+        {renderRichText(description)}
+      </p>
+    </>
   );
 }
 
@@ -2417,16 +2520,22 @@ function StructuredMobileQuestionDescription({
 
 function QuestionTitleInteractive({
   title,
+  mobileTitle,
   hint,
+  mobileHint,
   structuredMobileTitle = false,
   textWrapStyle,
 }: {
   title: string;
+  mobileTitle?: string | null;
   hint?: string;
+  mobileHint?: string | null;
   structuredMobileTitle?: boolean;
   textWrapStyle: CSSProperties;
 }) {
   const trimmedHint = hint?.trim() ?? "";
+  const trimmedMobileHint = mobileHint?.trim() ?? "";
+  const hasMobileTitle = Boolean(mobileTitle?.trim());
   const [isPinned, setIsPinned] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const wrapperRef = useRef<HTMLSpanElement | null>(null);
@@ -2453,11 +2562,20 @@ function QuestionTitleInteractive({
 
   return (
     <div className="flex max-w-full items-start gap-2">
-      {structuredMobileTitle ? <StructuredMobileQuestionTitle title={title} textWrapStyle={textWrapStyle} /> : null}
+      {hasMobileTitle ? (
+        <h1
+          className="survey-title-text min-w-0 flex-1 whitespace-pre-line break-words font-semibold tracking-tight text-slate-950 sm:hidden"
+          style={textWrapStyle}
+        >
+          {renderRichText(mobileTitle ?? "")}
+        </h1>
+      ) : structuredMobileTitle ? (
+        <StructuredMobileQuestionTitle title={title} textWrapStyle={textWrapStyle} />
+      ) : null}
       <h1
         className={cn(
           "survey-title-text min-w-0 flex-1 whitespace-pre-line break-words font-semibold tracking-tight text-slate-950",
-          structuredMobileTitle && "hidden sm:block",
+          (structuredMobileTitle || hasMobileTitle) && "hidden sm:block",
         )}
         style={textWrapStyle}
       >
@@ -2504,7 +2622,7 @@ function QuestionTitleInteractive({
             )}
             style={textWrapStyle}
           >
-            {renderRichText(trimmedHint)}
+            {renderResponsiveRichText(trimmedHint, trimmedMobileHint)}
           </span>
         </span>
       ) : null}
@@ -2557,10 +2675,15 @@ function AdditionalInfoTrayUpwardPopup({
               </button>
               <div className="space-y-1 pr-10">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Дополнительная информация</p>
-                <h2 className="text-lg font-semibold text-slate-950">{renderRichText(activeItem.label)}</h2>
+                <h2 className="text-lg font-semibold text-slate-950">
+                  {renderResponsiveRichText(activeItem.label, getMobileTextOverride(activeItem, "label"))}
+                </h2>
               </div>
               <p className="survey-additional-info-description-text mt-3 whitespace-pre-wrap text-slate-600">
-                {renderRichText(activeItem.description.trim() || "Текст не заполнен.")}
+                {renderResponsiveRichText(
+                  activeItem.description.trim() || "Текст не заполнен.",
+                  getMobileTextOverride(activeItem, "description"),
+                )}
               </p>
             </div>
           </div>
@@ -2575,10 +2698,15 @@ function AdditionalInfoTrayUpwardPopup({
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
             <div className="space-y-1">
-              <h2 className="text-lg font-semibold text-slate-950">{renderRichText(activeItem.label)}</h2>
+              <h2 className="text-lg font-semibold text-slate-950">
+                {renderResponsiveRichText(activeItem.label, getMobileTextOverride(activeItem, "label"))}
+              </h2>
             </div>
             <p className="survey-additional-info-description-text mt-3 whitespace-pre-wrap text-slate-600">
-              {renderRichText(activeItem.description.trim() || "Текст не заполнен.")}
+              {renderResponsiveRichText(
+                activeItem.description.trim() || "Текст не заполнен.",
+                getMobileTextOverride(activeItem, "description"),
+              )}
             </p>
           </div>
         </>
@@ -2598,7 +2726,7 @@ function AdditionalInfoTrayUpwardPopup({
                   : "border-slate-200 bg-white text-slate-700 hover:border-sky-200 hover:bg-sky-50/60",
               )}
             >
-              {renderRichText(item.label)}
+              {renderResponsiveRichText(item.label, getMobileTextOverride(item, "label"))}
             </button>
           ))}
         </div>
@@ -2640,10 +2768,15 @@ function AdditionalInfoTrayUpward({
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-slate-950">{renderRichText(activeItem.label)}</h2>
+            <h2 className="text-lg font-semibold text-slate-950">
+              {renderResponsiveRichText(activeItem.label, getMobileTextOverride(activeItem, "label"))}
+            </h2>
           </div>
           <p className="survey-additional-info-description-text mt-3 whitespace-pre-wrap text-slate-600">
-            {renderRichText(activeItem.description.trim() || "Текст не заполнен.")}
+            {renderResponsiveRichText(
+              activeItem.description.trim() || "Текст не заполнен.",
+              getMobileTextOverride(activeItem, "description"),
+            )}
           </p>
         </div>
       ) : null}
@@ -2662,7 +2795,7 @@ function AdditionalInfoTrayUpward({
                   : "border-slate-200 bg-white text-slate-700 hover:border-sky-200 hover:bg-sky-50/60",
               )}
             >
-              {renderRichText(item.label)}
+              {renderResponsiveRichText(item.label, getMobileTextOverride(item, "label"))}
             </button>
           ))}
         </div>
@@ -2707,7 +2840,7 @@ function AdditionalInfoTray({
                     : "border-slate-200 bg-white text-slate-700 hover:border-sky-200 hover:bg-sky-50/60",
                 )}
               >
-                {renderRichText(item.label)}
+                {renderResponsiveRichText(item.label, getMobileTextOverride(item, "label"))}
               </button>
               {activeItem?.id === item.id ? (
                 <div className="relative basis-full rounded-[22px] border border-sky-100 bg-white p-4 pr-12 text-left shadow-[0_24px_60px_-40px_rgba(15,23,42,0.45)] sm:hidden">
@@ -2721,10 +2854,12 @@ function AdditionalInfoTray({
                     <X className="h-4 w-4" aria-hidden="true" />
                   </button>
                   <div className="space-y-1">
-                    <h2 className="text-lg font-semibold text-slate-950">{renderRichText(item.label)}</h2>
+                    <h2 className="text-lg font-semibold text-slate-950">
+                      {renderResponsiveRichText(item.label, getMobileTextOverride(item, "label"))}
+                    </h2>
                   </div>
                   <p className="survey-additional-info-description-text mt-3 whitespace-pre-wrap text-slate-600">
-                    {renderRichText(item.description.trim())}
+                    {renderResponsiveRichText(item.description.trim(), getMobileTextOverride(item, "description"))}
                   </p>
                 </div>
               ) : null}
@@ -2745,10 +2880,15 @@ function AdditionalInfoTray({
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-slate-950">{renderRichText(activeItem.label)}</h2>
+            <h2 className="text-lg font-semibold text-slate-950">
+              {renderResponsiveRichText(activeItem.label, getMobileTextOverride(activeItem, "label"))}
+            </h2>
           </div>
           <p className="survey-additional-info-description-text mt-3 whitespace-pre-wrap text-slate-600">
-            {renderRichText(activeItem.description.trim() || "Текст не заполнен.")}
+            {renderResponsiveRichText(
+              activeItem.description.trim() || "Текст не заполнен.",
+              getMobileTextOverride(activeItem, "description"),
+            )}
           </p>
         </div>
       ) : null}
@@ -2797,11 +2937,11 @@ function QuestionRenderer({
                 <img src={attachmentUrl(option.mediaUrl)} alt={stripRichTextTokens(option.label)} className="mb-4 h-36 w-full rounded-[22px] object-cover" />
               ) : null}
               <p className={cn("survey-answer-text whitespace-pre-line text-slate-900", hasRichChoiceCards ? "font-semibold" : "whitespace-normal")} style={answerTextStyle}>
-                {renderRichText(option.label)}
+                {renderResponsiveRichText(option.label, getMobileTextOverride(option, "label"))}
               </p>
               {option.description ? (
                 <p className="survey-answer-text mt-2 whitespace-pre-line text-slate-500" style={answerTextStyle}>
-                  {renderRichText(option.description)}
+                  {renderResponsiveRichText(option.description, getMobileTextOverride(option, "description"))}
                 </p>
               ) : null}
             </button>
@@ -2837,11 +2977,11 @@ function QuestionRenderer({
                 />
                 <span>
                   <span className="survey-answer-text block whitespace-pre-line font-semibold text-slate-900" style={answerTextStyle}>
-                    {renderRichText(option.label)}
+                    {renderResponsiveRichText(option.label, getMobileTextOverride(option, "label"))}
                   </span>
                   {option.description ? (
                     <span className="survey-answer-text mt-1 block whitespace-pre-line text-slate-500" style={answerTextStyle}>
-                      {renderRichText(option.description)}
+                      {renderResponsiveRichText(option.description, getMobileTextOverride(option, "description"))}
                     </span>
                   ) : null}
                 </span>
@@ -2870,7 +3010,10 @@ function QuestionRenderer({
               )}
             >
               <span className="survey-answer-text whitespace-pre-line" style={answerTextStyle}>
-                {renderRichText(item.label)}
+                {renderResponsiveRichText(
+                  item.label,
+                  getMobileTextOverride(block, item.key === "yes" ? "yesLabel" : "noLabel"),
+                )}
               </span>
             </button>
           ))}
@@ -2903,8 +3046,8 @@ function QuestionRenderer({
             })}
           </div>
           <div className="survey-answer-text flex items-center justify-between text-slate-500" style={answerTextStyle}>
-            <span>{renderRichText(block.minLabel)}</span>
-            <span>{renderRichText(block.maxLabel)}</span>
+            <span>{renderResponsiveRichText(block.minLabel, getMobileTextOverride(block, "minLabel"))}</span>
+            <span>{renderResponsiveRichText(block.maxLabel, getMobileTextOverride(block, "maxLabel"))}</span>
           </div>
         </div>
       );
@@ -2939,13 +3082,13 @@ function QuestionRenderer({
           </div>
           <div className="survey-answer-text flex items-center justify-between text-slate-500" style={answerTextStyle}>
             <span>
-              {renderRichText(block.minLabel)} ({block.min})
+              {renderResponsiveRichText(block.minLabel, getMobileTextOverride(block, "minLabel"))} ({block.min})
             </span>
             <span className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-900">
               {Number(value ?? block.min)}
             </span>
             <span>
-              {renderRichText(block.maxLabel)} ({block.max})
+              {renderResponsiveRichText(block.maxLabel, getMobileTextOverride(block, "maxLabel"))} ({block.max})
             </span>
           </div>
         </div>
@@ -2964,11 +3107,11 @@ function QuestionRenderer({
             className="h-3 w-full accent-sky-600"
           />
           <div className="survey-answer-text flex items-center justify-between text-slate-500" style={answerTextStyle}>
-            <span>{renderRichText(block.minLabel)}</span>
+            <span>{renderResponsiveRichText(block.minLabel, getMobileTextOverride(block, "minLabel"))}</span>
             <span className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-900">
               {Number(value ?? block.defaultValue)}
             </span>
-            <span>{renderRichText(block.maxLabel)}</span>
+            <span>{renderResponsiveRichText(block.maxLabel, getMobileTextOverride(block, "maxLabel"))}</span>
           </div>
         </div>
       );
@@ -3411,7 +3554,7 @@ function DropdownQuestion({
   const isOtherSelected = block.allowOtherOption && Boolean(otherAnswer);
   const selectedOption =
     typeof dropdownValue === "string" ? block.options.find((option) => option.id === dropdownValue) ?? null : null;
-  const otherLabel = stripRichTextTokens(block.otherOptionLabel || "Другое");
+  const otherLabel = block.otherOptionLabel || "Другое";
 
   return (
     <div className="relative space-y-3">
@@ -3423,9 +3566,9 @@ function DropdownQuestion({
       >
         <span className={cn("whitespace-pre-line", !selectedOption && !isOtherSelected && "text-slate-400")}>
           {selectedOption
-            ? renderRichText(selectedOption.label)
+            ? renderResponsiveRichText(selectedOption.label, getMobileTextOverride(selectedOption, "label"))
             : isOtherSelected
-              ? otherLabel
+              ? renderResponsiveRichText(otherLabel, getMobileTextOverride(block, "otherOptionLabel"))
               : stripRichTextTokens(block.placeholder)}
         </span>
         <ChevronDown className={cn("h-4 w-4 shrink-0 text-slate-400 transition", isOpen && "rotate-180")} />
@@ -3467,8 +3610,14 @@ function DropdownQuestion({
                 )}
                 style={answerTextStyle}
               >
-                <span className="block whitespace-pre-line font-semibold">{renderRichText(option.label)}</span>
-                {option.description ? <span className="mt-1 block whitespace-pre-line text-slate-500">{renderRichText(option.description)}</span> : null}
+                <span className="block whitespace-pre-line font-semibold">
+                  {renderResponsiveRichText(option.label, getMobileTextOverride(option, "label"))}
+                </span>
+                {option.description ? (
+                  <span className="mt-1 block whitespace-pre-line text-slate-500">
+                    {renderResponsiveRichText(option.description, getMobileTextOverride(option, "description"))}
+                  </span>
+                ) : null}
               </button>
             );
           })}
@@ -3488,7 +3637,9 @@ function DropdownQuestion({
               )}
               style={answerTextStyle}
             >
-              <span className="block whitespace-pre-line font-semibold">{otherLabel}</span>
+              <span className="block whitespace-pre-line font-semibold">
+                {renderResponsiveRichText(otherLabel, getMobileTextOverride(block, "otherOptionLabel"))}
+              </span>
             </button>
           ) : null}
         </div>
@@ -3606,7 +3757,7 @@ function ContactQuestion({
       {enabledFields.map((field) => (
         <div key={field.id} className="space-y-2">
           <label className="survey-answer-text font-semibold text-slate-700" style={answerTextStyle}>
-            {renderRichText(field.label)}
+            {renderResponsiveRichText(field.label, getMobileTextOverride(field, "label"))}
             {field.required ? <span className="ml-1 text-rose-500">*</span> : null}
           </label>
           {field.id === "phone" ? (
@@ -3746,11 +3897,11 @@ function RankingQuestion({
           </span>
           <div className="min-w-0 flex-1">
             <p className="survey-answer-text whitespace-pre-line font-semibold text-slate-900" style={answerTextStyle}>
-              {renderRichText(item.label)}
+              {renderResponsiveRichText(item.label, getMobileTextOverride(item, "label"))}
             </p>
             {item.description ? (
               <p className="survey-answer-text whitespace-pre-line text-slate-500" style={answerTextStyle}>
-                {renderRichText(item.description)}
+                {renderResponsiveRichText(item.description, getMobileTextOverride(item, "description"))}
               </p>
             ) : null}
           </div>

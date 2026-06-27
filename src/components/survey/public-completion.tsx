@@ -17,38 +17,11 @@ function getToneClasses(state: PublicCompletionState) {
     };
   }
 
-  if (state.color === "GREEN") {
-    return {
-      shell: "border-emerald-100 bg-emerald-50/80 text-emerald-950",
-      ring: "border-emerald-200 border-t-emerald-600",
-      badge: "bg-emerald-100 text-emerald-800",
-      badgeText: "Зелёная зона",
-    };
-  }
-
-  if (state.color === "YELLOW") {
-    return {
-      shell: "border-amber-100 bg-amber-50/80 text-amber-950",
-      ring: "border-amber-200 border-t-amber-600",
-      badge: "bg-amber-100 text-amber-800",
-      badgeText: "Ответ принят",
-    };
-  }
-
-  if (state.color === "RED") {
-    return {
-      shell: "border-rose-100 bg-rose-50/80 text-rose-950",
-      ring: "border-rose-200 border-t-rose-600",
-      badge: "bg-rose-100 text-rose-800",
-      badgeText: "Ответ принят",
-    };
-  }
-
   return {
     shell: "border-slate-200 bg-white text-slate-950",
     ring: "border-slate-200 border-t-slate-500",
-    badge: "bg-slate-100 text-slate-700",
-    badgeText: "Ответ принят",
+    badge: "",
+    badgeText: "",
   };
 }
 
@@ -102,9 +75,11 @@ export function PublicCompletion({
           <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-white/80 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
             <div className={`h-12 w-12 rounded-full border-4 ${state.phase === "processing" ? "animate-spin" : ""} ${tone.ring}`} />
           </div>
-          <div className={`mt-7 inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${tone.badge}`}>
-            {tone.badgeText}
-          </div>
+          {state.phase === "processing" ? (
+            <div className={`mt-7 inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${tone.badge}`}>
+              {tone.badgeText}
+            </div>
+          ) : null}
           <h1 className="mx-auto mt-5 max-w-2xl whitespace-pre-line text-[clamp(1.7rem,7vw,2.6rem)] font-semibold leading-tight tracking-tight">
             {state.title}
           </h1>

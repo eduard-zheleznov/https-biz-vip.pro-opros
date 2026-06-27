@@ -13,6 +13,8 @@ import type {
   DropdownOtherAnswerValue,
   EvaluatedAnswer,
   MediaChoiceBlock,
+  MobileTextOverrideKey,
+  MobileTextOverrides,
   MultiChoiceBlock,
   RankingBlock,
   ScaleBlock,
@@ -100,6 +102,22 @@ const CONTACT_VALUE_ORDER = new Map<string, number>(
   ["fullName", "email", "phone", "phoneMessengers", "company"].map((key, index) => [key, index]),
 );
 const CONTACT_FIELD_KEYS = ["fullName", "email", "phone", "company"] as const satisfies ContactField["id"][];
+const MOBILE_TEXT_OVERRIDE_KEYS = new Set<MobileTextOverrideKey>([
+  "title",
+  "description",
+  "questionHint",
+  "label",
+  "ctaLabel",
+  "submitLabel",
+  "yesLabel",
+  "noLabel",
+  "minLabel",
+  "maxLabel",
+  "placeholder",
+  "textPlaceholder",
+  "otherOptionLabel",
+  "otherPlaceholder",
+]);
 const CONTACT_COUNTRY_DIAL_CODES: Record<string, string> = {
   ru: "+7",
   kz: "+7",
@@ -240,6 +258,7 @@ function normalizeContactFields(fields: ContactField[] | undefined): ContactFiel
       ...fallback,
       label: source?.label?.trim() || fallback.label,
       placeholder: source?.placeholder ?? fallback.placeholder,
+      ...mobileTextOverridesEntry(source?.mobileTextOverrides),
       required: Boolean(source?.required ?? fallback.required),
       enabled: source ? source.enabled ?? true : fallback.enabled,
     };
@@ -662,6 +681,31 @@ function normalizeAdminLabel(value: unknown) {
   return typeof value === "string" ? value.trim().slice(0, 120) : "";
 }
 
+function normalizeMobileTextOverrides(value: unknown): MobileTextOverrides {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const normalized: MobileTextOverrides = {};
+
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    const overrideKey = key as MobileTextOverrideKey;
+    if (!MOBILE_TEXT_OVERRIDE_KEYS.has(overrideKey) || typeof entry !== "string" || !entry.trim()) {
+      continue;
+    }
+
+    normalized[overrideKey] = entry.slice(0, 5000);
+  }
+
+  return normalized;
+}
+
+function mobileTextOverridesEntry(value: unknown) {
+  const mobileTextOverrides = normalizeMobileTextOverrides(value);
+
+  return Object.keys(mobileTextOverrides).length ? { mobileTextOverrides } : {};
+}
+
 export function coerceSurveyNavigationTargets(schema: SurveySchema): SurveySchema {
   const aliasMap = new Map<string, string>();
 
@@ -845,14 +889,16 @@ function normalizeCombinedInputBlock(value: unknown, index: number): CombinedInp
 
 function normalizeBlock(block: SurveyBlock, index: number): SurveyBlock {
   const fallback = createBlock(block.type, index + 1);
+  const { mobileTextOverrides, ...blockWithoutMobileTextOverrides } = block;
   const base = {
     ...fallback,
-    ...block,
+    ...blockWithoutMobileTextOverrides,
     id: block.id || nanoid(10),
     adminLabel: normalizeAdminLabel(block.adminLabel),
     title: block.title?.trim() || fallback.title,
     description: block.description ?? "",
     questionHint: typeof block.questionHint === "string" ? block.questionHint.slice(0, 2000) : "",
+    ...mobileTextOverridesEntry(mobileTextOverrides),
     resultLabelOverride: typeof block.resultLabelOverride === "string" ? block.resultLabelOverride : null,
     required: Boolean(block.required),
     nextBlockId: block.nextBlockId ?? null,
@@ -991,6 +1037,7 @@ export function changeSurveyBlockType(block: SurveyBlock, nextType: SurveyBlockT
     title: block.title,
     description: block.description,
     questionHint: block.questionHint,
+    mobileTextOverrides: block.mobileTextOverrides,
     resultLabelOverride: block.resultLabelOverride ?? null,
     required: nextType === "WELCOME" ? false : block.required,
     nextBlockId: block.nextBlockId,
@@ -1013,6 +1060,7 @@ function normalizeOptions(options: ChoiceOption[] | undefined) {
     id: option.id || nanoid(10),
     label: option.label?.trim() || `Вариант ${index + 1}`,
     description: option.description ?? "",
+    ...mobileTextOverridesEntry(option.mobileTextOverrides),
     score: Number.isFinite(option.score) ? option.score : 0,
     nextBlockId: option.nextBlockId ?? null,
     mediaAssetId: option.mediaAssetId ?? null,
@@ -1029,6 +1077,7 @@ function normalizeAdditionalInfoItems(items: AdditionalInfoItem[] | undefined) {
     id: item?.id || nanoid(10),
     label: item?.label?.trim() || `Пункт ${index + 1}`,
     description: item?.description ?? "",
+    ...mobileTextOverridesEntry(item?.mobileTextOverrides),
   }));
 }
 

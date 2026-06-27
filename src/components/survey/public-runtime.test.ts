@@ -328,6 +328,50 @@ describe("PublicRuntime mobile interactions", () => {
     root.unmount();
   });
 
+  it("renders manual mobile-only block text without changing the desktop text", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const baseBlock = buildSchema().blocks[0]!;
+    const schema = buildSchema({
+      title: "Обычный опрос",
+      blocks: [
+        {
+          ...baseBlock,
+          title: "Десктопный заголовок без ручных переносов",
+          description: "Десктопное описание без ручных переносов",
+          questionHint: "Десктопная подсказка",
+          mobileTextOverrides: {
+            title: "Мобильный\nзаголовок",
+            description: "Мобильное\nописание",
+            questionHint: "Мобильная\nподсказка",
+          },
+        } as SurveySchema["blocks"][number],
+      ],
+    });
+
+    await act(async () => {
+      root.render(React.createElement(PublicRuntime, { surveyId: "survey-1", publicSlug: "survey-1", schema }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const mobileTitle = container.querySelector("h1.sm\\:hidden") as HTMLHeadingElement | null;
+    const desktopTitle = container.querySelector("h1.hidden.sm\\:block") as HTMLHeadingElement | null;
+    const mobileDescription = container.querySelector("p.survey-description-text.sm\\:hidden") as HTMLParagraphElement | null;
+    const desktopDescription = container.querySelector("p.survey-description-text.hidden.sm\\:block") as HTMLParagraphElement | null;
+    const tooltip = container.querySelector('[role="tooltip"]') as HTMLElement | null;
+
+    expect(mobileTitle?.textContent).toBe("Мобильный\nзаголовок");
+    expect(desktopTitle?.textContent).toBe("Десктопный заголовок без ручных переносов");
+    expect(mobileDescription?.textContent).toBe("Мобильное\nописание");
+    expect(desktopDescription?.textContent).toBe("Десктопное описание без ручных переносов");
+    expect(tooltip?.textContent).toContain("Мобильная\nподсказка");
+    expect(tooltip?.textContent).toContain("Десктопная подсказка");
+
+    root.unmount();
+  });
+
   it("uses exact mobile line overrides for selected OKC filtration questions", async () => {
     async function renderStructuredTextBlock({
       title,
@@ -739,7 +783,7 @@ describe("PublicRuntime mobile interactions", () => {
     });
     Object.defineProperty(window, "visualViewport", {
       value: {
-        offsetTop: 0,
+        offsetTop: 96,
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
       },
@@ -877,6 +921,100 @@ describe("PublicRuntime mobile interactions", () => {
 
     await waitForCondition(() => scrollToMock.mock.calls.length > 0);
     expect(container.textContent).toContain("Расскажите о вашем опыте");
+    const runtime = container.querySelector(".survey-runtime") as HTMLElement | null;
+    expect(runtime?.style.getPropertyValue("--survey-mobile-browser-top-inset")).toBe("0px");
+
+    root.unmount();
+  });
+
+  it("does not keep the Chrome iOS fallback inset after advancing from contact details", async () => {
+    Object.defineProperty(window.navigator, "userAgent", {
+      value:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/125.0.6422.80 Mobile/15E148 Safari/604.1",
+      configurable: true,
+    });
+    Object.defineProperty(window, "visualViewport", {
+      value: {
+        offsetTop: 0,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      },
+      configurable: true,
+    });
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const contactBlock = buildSchema().blocks[0]!;
+    const textBlock = buildSchema().blocks[1]!;
+    const schema = buildSchema({
+      blocks: [
+        {
+          ...contactBlock,
+          id: "contact-1",
+          type: "CONTACT",
+          title: "Контактные данные",
+          description: "",
+          fields: [
+            {
+              id: "fullName",
+              label: "Имя",
+              placeholder: "Иван",
+              required: true,
+              enabled: true,
+            },
+          ],
+          submitLabel: "Продолжить",
+          nextBlockId: "block-2",
+        } as SurveySchema["blocks"][number],
+        {
+          ...textBlock,
+          id: "block-2",
+          type: "TEXT",
+          title: "Вопрос после контактов",
+          description: "",
+          placeholder: "Ответ",
+          multiline: true,
+          minLength: 0,
+          maxLength: 2000,
+          allowVoiceAnswer: false,
+          attachVoiceAnswerToResult: false,
+          allowFileAnswer: false,
+          nextBlockId: null,
+        } as SurveySchema["blocks"][number],
+      ],
+    });
+
+    await act(async () => {
+      root.render(React.createElement(PublicRuntime, { surveyId: "survey-1", publicSlug: "survey-1", schema }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const input = container.querySelector('input[placeholder="Иван"]') as HTMLInputElement | null;
+    expect(input).not.toBeNull();
+
+    await act(async () => {
+      input!.focus();
+      input!.value = "Иван";
+      input!.dispatchEvent(new Event("input", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const continueButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Продолжить")) as HTMLButtonElement | undefined;
+    expect(continueButton).toBeDefined();
+
+    const scrollCallsBeforeSubmit = scrollToMock.mock.calls.length;
+
+    await act(async () => {
+      continueButton!.click();
+    });
+
+    await waitForCondition(
+      () =>
+        container.textContent?.includes("Вопрос после контактов") === true &&
+        scrollToMock.mock.calls.length > scrollCallsBeforeSubmit,
+    );
     const runtime = container.querySelector(".survey-runtime") as HTMLElement | null;
     expect(runtime?.style.getPropertyValue("--survey-mobile-browser-top-inset")).toBe("0px");
 
