@@ -1453,6 +1453,10 @@ export function SurveyBuilder({
   const [saveError, setSaveError] = useState("");
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<null | "publish" | "archive" | "restore">(null);
+  const [publicSlugValue, setPublicSlugValue] = useState(publicSlug);
+  const [publicSlugDraft, setPublicSlugDraft] = useState(publicSlug);
+  const [publicSlugStatus, setPublicSlugStatus] = useState<SaveStatus>("idle");
+  const [publicSlugError, setPublicSlugError] = useState("");
   const [versionNumber, setVersionNumber] = useState(currentVersionNumber);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const serialized = JSON.stringify(schema);
@@ -1500,6 +1504,13 @@ export function SurveyBuilder({
   }, [builderUiStorageKey]);
 
   useEffect(() => {
+    setPublicSlugValue(publicSlug);
+    setPublicSlugDraft(publicSlug);
+    setPublicSlugStatus("idle");
+    setPublicSlugError("");
+  }, [publicSlug]);
+
+  useEffect(() => {
     try {
       window.localStorage.setItem(builderUiStorageKey, JSON.stringify(builderUiState));
     } catch {
@@ -1534,7 +1545,8 @@ export function SurveyBuilder({
     id: block.id,
     title: formatBlockTargetLabel(block, index),
   }));
-  const publicSurveyUrl = typeof window === "undefined" ? withBasePath(`/s/${publicSlug}`) : appAbsoluteUrl(window.location.origin, `/s/${publicSlug}`);
+  const publicSurveyUrl = typeof window === "undefined" ? withBasePath(`/s/${publicSlugValue}`) : appAbsoluteUrl(window.location.origin, `/s/${publicSlugValue}`);
+  const publicSlugChanged = publicSlugDraft.trim() !== publicSlugValue;
 
   const updateBlock = (blockId: string, updater: SurveyBlock | ((block: SurveyBlock) => SurveyBlock)) => {
     setSchema((current) => ({
@@ -1569,6 +1581,34 @@ export function SurveyBuilder({
       setSaveError(error instanceof Error ? error.message : "Операция завершилась с ошибкой.");
     } finally {
       setBusyAction(null);
+    }
+  };
+
+  const handlePublicSlugSave = async () => {
+    setPublicSlugStatus("saving");
+    setPublicSlugError("");
+
+    try {
+      const response = await fetch(withBasePath(`/api/surveys/${surveyId}/public-slug`), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          publicSlug: publicSlugDraft,
+        }),
+      });
+      const payload = (await response.json()) as { error?: string; publicSlug?: string };
+      if (!response.ok || !payload.publicSlug) {
+        throw new Error(payload.error || "Не удалось сохранить адрес ссылки.");
+      }
+
+      setPublicSlugValue(payload.publicSlug);
+      setPublicSlugDraft(payload.publicSlug);
+      setPublicSlugStatus("saved");
+    } catch (error) {
+      setPublicSlugStatus("error");
+      setPublicSlugError(error instanceof Error ? error.message : "Не удалось сохранить адрес ссылки.");
     }
   };
 
@@ -1773,8 +1813,43 @@ export function SurveyBuilder({
             </Button>
             <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
               <p className="font-semibold text-slate-900">Публичная ссылка</p>
-              <p className="mt-1 break-all text-xs">{publicSurveyUrl}</p>
-              <div className="mt-3">
+              <div className="mt-3 space-y-2">
+                <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400" htmlFor="public-slug-input">
+                  Адрес после /s/
+                </label>
+                <Input
+                  id="public-slug-input"
+                  value={publicSlugDraft}
+                  onChange={(event) => {
+                    setPublicSlugDraft(event.target.value);
+                    setPublicSlugStatus("idle");
+                    setPublicSlugError("");
+                  }}
+                  placeholder="okc-mpp"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="rounded-2xl bg-white font-mono text-sm"
+                />
+                <p className="break-all rounded-2xl bg-white px-3 py-2 text-xs text-slate-600 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.22)]">
+                  {publicSurveyUrl}
+                </p>
+                <p className="text-xs text-slate-500">
+                  Можно ввести короткий адрес или вставить полную ссылку. Система уберёт лишнее и проверит, свободен ли адрес.
+                </p>
+                {publicSlugError ? <p className="rounded-2xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{publicSlugError}</p> : null}
+                {publicSlugStatus === "saved" ? <p className="rounded-2xl bg-emerald-50 px-3 py-2 text-xs text-emerald-700">Адрес сохранён.</p> : null}
+              </div>
+              <div className="mt-3 grid gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={!publicSlugChanged || publicSlugStatus === "saving"}
+                  onClick={() => startTransition(() => void handlePublicSlugSave())}
+                >
+                  {publicSlugStatus === "saving" ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Сохранить адрес
+                </Button>
                 <CopyButton text={publicSurveyUrl} />
               </div>
             </div>
@@ -1795,7 +1870,7 @@ export function SurveyBuilder({
               </Button>
             </div>
             <Button asChild variant="ghost" className="w-full">
-              <Link href={`/s/${publicSlug}`} target="_blank">
+              <Link href={`/s/${publicSlugValue}`} target="_blank">
                 Открыть опубликованный опрос
               </Link>
             </Button>

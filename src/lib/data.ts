@@ -29,6 +29,7 @@ import {
   extractSurveyAnalysisMaxScore,
   inferAiScoreSummary,
 } from "@/lib/results";
+import { buildUniquePublicSlug, normalizePublicSlugInput } from "@/lib/public-slug";
 import { RESPONSE_NOTIFICATION_QUEUE, RESPONSE_TIMEOUT_QUEUE } from "@/lib/jobs/queues";
 import { getBoss } from "@/lib/jobs/boss";
 import {
@@ -78,6 +79,18 @@ export class ResponseTimerExpiredError extends Error {
 }
 
 const RETAKE_LINK_TTL_DAYS = 7;
+
+async function isPublicSlugTaken(publicSlug: string, excludeSurveyId?: string) {
+  const existing = await prisma.survey.findFirst({
+    where: {
+      publicSlug,
+      ...(excludeSurveyId ? { id: { not: excludeSurveyId } } : {}),
+    },
+    select: { id: true },
+  });
+
+  return Boolean(existing);
+}
 
 function decryptOptionalSecret(payload: string | null | undefined) {
   try {
@@ -890,7 +903,7 @@ async function createSurveyRecord(
   if (validationErrors.length) {
     throw new Error(validationErrors[0]);
   }
-  const publicSlug = `${slugify(schema.title)}-${nanoid(6).toLowerCase()}`;
+  const publicSlug = await buildUniquePublicSlug(schema.title, (candidate) => isPublicSlugTaken(candidate));
 
   return prisma.$transaction(async (tx) => {
     const survey = await tx.survey.create({
@@ -1002,7 +1015,7 @@ export async function duplicateSurvey(surveyId: string, actorId: string) {
     source.title,
   );
   const nextTitle = `${source.title} (копия)`;
-  const publicSlug = `${slugify(nextTitle)}-${nanoid(6).toLowerCase()}`;
+  const publicSlug = await buildUniquePublicSlug(nextTitle, (candidate) => isPublicSlugTaken(candidate));
 
   return prisma.$transaction(async (tx) => {
     const survey = await tx.survey.create({
@@ -1164,6 +1177,24 @@ export async function saveSurveyDraft(surveyId: string, actorId: string, input: 
     });
 
     return version;
+  });
+}
+
+export async function updateSurveyPublicSlug(surveyId: string, actorId: string, inputPublicSlug: string) {
+  const { survey } = await resolveSurveyAccess(surveyId, actorId, "edit");
+  const publicSlug = normalizePublicSlugInput(inputPublicSlug);
+
+  if (publicSlug !== survey.publicSlug && (await isPublicSlugTaken(publicSlug, surveyId))) {
+    throw new Error("Этот адрес ссылки уже занят другим опросом.");
+  }
+
+  return prisma.survey.update({
+    where: { id: surveyId },
+    data: { publicSlug },
+    select: {
+      publicSlug: true,
+      updatedAt: true,
+    },
   });
 }
 
