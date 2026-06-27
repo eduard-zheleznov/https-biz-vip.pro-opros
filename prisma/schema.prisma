@@ -215,6 +215,8 @@ model NotificationConfig {
   surveyId                 String   @unique
   survey                   Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
   telegramEnabled          Boolean  @default(false)
+  telegramAiFilterEnabled  Boolean  @default(false)
+  telegramAiAllowedColors  String[] @default([])
   telegramRecipientUserId  String?
   telegramRecipientUserIds String[] @default([])
   telegramRecipient        User?    @relation("NotificationOwner", fields: [telegramRecipientUserId], references: [id], onDelete: SetNull)
@@ -238,17 +240,28 @@ model TelegramConnection {
 }
 
 model AiAnalysisRule {
-  id              String     @id @default(cuid())
-  surveyId        String     @unique
-  survey          Survey     @relation(fields: [surveyId], references: [id], onDelete: Cascade)
-  enabled         Boolean    @default(false)
-  provider        AiProvider @default(OPENAI)
-  prompt          String     @db.Text
-  model           String?
-  apiKeyEncrypted String?    @db.Text
-  apiKeyLastFour  String?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  id                          String     @id @default(cuid())
+  surveyId                    String     @unique
+  survey                      Survey     @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  enabled                     Boolean    @default(false)
+  provider                    AiProvider @default(OPENAI)
+  prompt                      String     @db.Text
+  model                       String?
+  apiKeyEncrypted             String?    @db.Text
+  apiKeyLastFour              String?
+  completionRoutingEnabled    Boolean    @default(false)
+  completionProcessingTitle   String     @default("Ваши ответы обрабатываются")
+  completionProcessingMessage String     @default("Подождите совсем чуть-чуть. Мы анализируем ответы и подбираем следующий шаг.") @db.Text
+  completionGreenTitle        String     @default("Поздравляем, вы нам подходите")
+  completionGreenMessage      String     @default("Напишите руководителю, и он подберёт удобное время для общения.") @db.Text
+  completionYellowTitle       String     @default("Спасибо за ваши ответы")
+  completionYellowMessage     String     @default("Ваши ответы зафиксированы. При необходимости мы с вами свяжемся.") @db.Text
+  completionRedTitle          String     @default("Спасибо за ваши ответы")
+  completionRedMessage        String     @default("Ваши ответы зафиксированы. При необходимости мы с вами свяжемся.") @db.Text
+  completionFallbackTitle     String     @default("Спасибо за ваши ответы")
+  completionFallbackMessage   String     @default("Ваши ответы зафиксированы. При необходимости мы с вами свяжемся.") @db.Text
+  createdAt                   DateTime   @default(now())
+  updatedAt                   DateTime   @updatedAt
 }
 
 model ResponseSession {
@@ -268,6 +281,7 @@ model ResponseSession {
   respondentData  Json?
   totalScore      Int                   @default(0)
   aiNote          String?
+  aiResultColor   String?
   aiStatus        JobStatus             @default(PENDING)
   telegramStatus  JobStatus             @default(PENDING)
   answers         ResponseAnswer[]

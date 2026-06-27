@@ -19,6 +19,19 @@ export type AiScoreSummary = {
 
 export type AiResultColor = "GREEN" | "YELLOW" | "RED";
 
+export type AiCompletionCopy = {
+  processingTitle: string;
+  processingMessage: string;
+  greenTitle: string;
+  greenMessage: string;
+  yellowTitle: string;
+  yellowMessage: string;
+  redTitle: string;
+  redMessage: string;
+  fallbackTitle: string;
+  fallbackMessage: string;
+};
+
 export type ResultPromptOverrides = Record<string, string>;
 
 const AI_NOTE_COLOR_MARKERS: Record<string, string> = {
@@ -137,6 +150,106 @@ export function shouldSendTelegramForAiResult(input: {
 
   const allowedColors = new Set(input.allowedColors.map((color) => color.trim().toUpperCase()));
   return allowedColors.has(input.color);
+}
+
+export function normalizeAiResultColors(
+  colors: readonly string[],
+  options: { fallbackToGreen?: boolean } = {},
+): AiResultColor[] {
+  const normalized: AiResultColor[] = [];
+
+  for (const color of colors) {
+    const extracted = extractAiResultColor(color);
+    if (extracted && !normalized.includes(extracted)) {
+      normalized.push(extracted);
+    }
+  }
+
+  if (!normalized.length && options.fallbackToGreen) {
+    return ["GREEN"];
+  }
+
+  return normalized;
+}
+
+function cleanCompletionText(value: string, fallback: string) {
+  const normalized = value.trim();
+  return normalized || fallback;
+}
+
+export function resolveAiCompletionContent(input: {
+  routingEnabled: boolean;
+  aiStatus: "PENDING" | "SUCCESS" | "FAILED" | "SKIPPED";
+  color: AiResultColor | null;
+  defaultTitle: string;
+  copy: AiCompletionCopy;
+}): {
+  phase: "processing" | "final";
+  shouldPoll: boolean;
+  color: AiResultColor | null;
+  title: string;
+  message: string;
+} {
+  if (!input.routingEnabled) {
+    return {
+      phase: "final",
+      shouldPoll: false,
+      color: null,
+      title: cleanCompletionText(input.defaultTitle, "Спасибо за опрос!"),
+      message: "",
+    };
+  }
+
+  if (input.aiStatus === "PENDING") {
+    return {
+      phase: "processing",
+      shouldPoll: true,
+      color: null,
+      title: cleanCompletionText(input.copy.processingTitle, "Ваши ответы обрабатываются"),
+      message: cleanCompletionText(
+        input.copy.processingMessage,
+        "Подождите совсем чуть-чуть. Мы анализируем ответы и подбираем следующий шаг.",
+      ),
+    };
+  }
+
+  if (input.aiStatus === "SUCCESS" && input.color === "GREEN") {
+    return {
+      phase: "final",
+      shouldPoll: false,
+      color: "GREEN",
+      title: cleanCompletionText(input.copy.greenTitle, "Поздравляем, вы нам подходите"),
+      message: cleanCompletionText(input.copy.greenMessage, "Напишите руководителю, и он подберёт удобное время для общения."),
+    };
+  }
+
+  if (input.aiStatus === "SUCCESS" && input.color === "YELLOW") {
+    return {
+      phase: "final",
+      shouldPoll: false,
+      color: "YELLOW",
+      title: cleanCompletionText(input.copy.yellowTitle, "Спасибо за ваши ответы"),
+      message: cleanCompletionText(input.copy.yellowMessage, "Ваши ответы зафиксированы. При необходимости мы с вами свяжемся."),
+    };
+  }
+
+  if (input.aiStatus === "SUCCESS" && input.color === "RED") {
+    return {
+      phase: "final",
+      shouldPoll: false,
+      color: "RED",
+      title: cleanCompletionText(input.copy.redTitle, "Спасибо за ваши ответы"),
+      message: cleanCompletionText(input.copy.redMessage, "Ваши ответы зафиксированы. При необходимости мы с вами свяжемся."),
+    };
+  }
+
+  return {
+    phase: "final",
+    shouldPoll: false,
+    color: null,
+    title: cleanCompletionText(input.copy.fallbackTitle, "Спасибо за ваши ответы"),
+    message: cleanCompletionText(input.copy.fallbackMessage, "Ваши ответы зафиксированы. При необходимости мы с вами свяжемся."),
+  };
 }
 
 function normalizeDecimal(value: string) {

@@ -6,6 +6,8 @@ import {
   extractAiResultColor,
   extractSurveyAnalysisMaxScore,
   inferAiScoreSummary,
+  normalizeAiResultColors,
+  resolveAiCompletionContent,
   shouldSendTelegramForAiResult,
 } from "@/lib/results";
 
@@ -54,6 +56,88 @@ describe("result score helpers", () => {
         color: null,
       }),
     ).toBe(false);
+  });
+
+  it("normalizes configured AI result colors with a safe green fallback", () => {
+    expect(normalizeAiResultColors(["green", "ЖЁЛТЫЙ", "invalid", "GREEN"])).toEqual(["GREEN", "YELLOW"]);
+    expect(normalizeAiResultColors([], { fallbackToGreen: true })).toEqual(["GREEN"]);
+    expect(normalizeAiResultColors([], { fallbackToGreen: false })).toEqual([]);
+  });
+
+  it("resolves AI completion content for processing, colored and fallback states", () => {
+    const copy = {
+      processingTitle: "Обрабатываем",
+      processingMessage: "Подождите",
+      greenTitle: "Зелёный заголовок",
+      greenMessage: "Зелёный текст",
+      yellowTitle: "Жёлтый заголовок",
+      yellowMessage: "Жёлтый текст",
+      redTitle: "Красный заголовок",
+      redMessage: "Красный текст",
+      fallbackTitle: "Запасной заголовок",
+      fallbackMessage: "Запасной текст",
+    };
+
+    expect(
+      resolveAiCompletionContent({
+        routingEnabled: false,
+        aiStatus: "PENDING",
+        color: null,
+        defaultTitle: "Спасибо",
+        copy,
+      }),
+    ).toEqual({
+      phase: "final",
+      shouldPoll: false,
+      color: null,
+      title: "Спасибо",
+      message: "",
+    });
+    expect(
+      resolveAiCompletionContent({
+        routingEnabled: true,
+        aiStatus: "PENDING",
+        color: null,
+        defaultTitle: "Спасибо",
+        copy,
+      }),
+    ).toEqual({
+      phase: "processing",
+      shouldPoll: true,
+      color: null,
+      title: "Обрабатываем",
+      message: "Подождите",
+    });
+    expect(
+      resolveAiCompletionContent({
+        routingEnabled: true,
+        aiStatus: "SUCCESS",
+        color: "GREEN",
+        defaultTitle: "Спасибо",
+        copy,
+      }),
+    ).toEqual({
+      phase: "final",
+      shouldPoll: false,
+      color: "GREEN",
+      title: "Зелёный заголовок",
+      message: "Зелёный текст",
+    });
+    expect(
+      resolveAiCompletionContent({
+        routingEnabled: true,
+        aiStatus: "FAILED",
+        color: null,
+        defaultTitle: "Спасибо",
+        copy,
+      }),
+    ).toEqual({
+      phase: "final",
+      shouldPoll: false,
+      color: null,
+      title: "Запасной заголовок",
+      message: "Запасной текст",
+    });
   });
 
   it("uses full survey maximum for AI score percentages", () => {
