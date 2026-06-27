@@ -39,6 +39,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { RichTextTextarea } from "@/components/admin/rich-text-textarea";
 import { appAbsoluteUrl, withBasePath } from "@/lib/base-path";
+import { normalizePublicSlugInput } from "@/lib/public-slug";
 import {
   BLOCK_GROUPS,
   BLOCK_LABELS,
@@ -1552,6 +1553,18 @@ export function SurveyBuilder({
   }));
   const publicSurveyUrl = browserOrigin ? appAbsoluteUrl(browserOrigin, `/s/${publicSlugValue}`) : withBasePath(`/s/${publicSlugValue}`);
   const publicSlugChanged = publicSlugDraft.trim() !== publicSlugValue;
+  const normalizedPublicSlugDraft = useMemo(() => {
+    try {
+      return normalizePublicSlugInput(publicSlugDraft);
+    } catch {
+      return null;
+    }
+  }, [publicSlugDraft]);
+  const publicSurveyPreviewUrl = normalizedPublicSlugDraft
+    ? browserOrigin
+      ? appAbsoluteUrl(browserOrigin, `/s/${normalizedPublicSlugDraft}`)
+      : withBasePath(`/s/${normalizedPublicSlugDraft}`)
+    : "";
 
   const updateBlock = (blockId: string, updater: SurveyBlock | ((block: SurveyBlock) => SurveyBlock)) => {
     setSchema((current) => ({
@@ -1836,9 +1849,16 @@ export function SurveyBuilder({
                   spellCheck={false}
                   className="rounded-2xl bg-white font-mono text-sm"
                 />
-                <p className="break-all rounded-2xl bg-white px-3 py-2 text-xs text-slate-600 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.22)]">
-                  {publicSurveyUrl}
-                </p>
+                <div className="space-y-2 rounded-2xl bg-white px-3 py-2 text-xs text-slate-600 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.22)]">
+                  <p className="font-semibold text-slate-500">Текущая ссылка</p>
+                  <p className="break-all">{publicSurveyUrl}</p>
+                  {publicSlugChanged && publicSurveyPreviewUrl ? (
+                    <>
+                      <p className="pt-1 font-semibold text-slate-500">После сохранения</p>
+                      <p className="break-all text-sky-700">{publicSurveyPreviewUrl}</p>
+                    </>
+                  ) : null}
+                </div>
                 <p className="text-xs text-slate-500">
                   Можно ввести короткий адрес или вставить полную ссылку. Система уберёт лишнее и проверит, свободен ли адрес.
                 </p>
