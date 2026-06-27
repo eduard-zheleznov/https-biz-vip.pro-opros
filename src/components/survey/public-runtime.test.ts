@@ -749,10 +749,55 @@ describe("PublicRuntime mobile interactions", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
+    const baseBlock = buildSchema().blocks[0]!;
+    const schema = buildSchema({
+      blocks: [
+        {
+          ...baseBlock,
+          id: "block-1",
+          type: "TEXT",
+          title: "Первый текстовый вопрос",
+          description: "",
+          placeholder: "Ответ",
+          multiline: true,
+          minLength: 0,
+          maxLength: 2000,
+          allowVoiceAnswer: false,
+          attachVoiceAnswerToResult: false,
+          allowFileAnswer: false,
+          nextBlockId: "block-2",
+        } as SurveySchema["blocks"][number],
+        {
+          ...baseBlock,
+          id: "block-2",
+          type: "TEXT",
+          title: "Второй текстовый вопрос",
+          description: "",
+          placeholder: "Ответ",
+          multiline: true,
+          minLength: 0,
+          maxLength: 2000,
+          allowVoiceAnswer: false,
+          attachVoiceAnswerToResult: false,
+          allowFileAnswer: false,
+          nextBlockId: null,
+        } as SurveySchema["blocks"][number],
+      ],
+    });
 
     await act(async () => {
-      root.render(React.createElement(PublicRuntime, { surveyId: "survey-1", publicSlug: "survey-1", schema: buildSchema() }));
+      root.render(React.createElement(PublicRuntime, { surveyId: "survey-1", publicSlug: "survey-1", schema }));
       await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const textarea = container.querySelector("textarea") as HTMLTextAreaElement | null;
+    expect(textarea).not.toBeNull();
+
+    await act(async () => {
+      textarea!.focus();
+      textarea!.value = "Текстовый ответ";
+      textarea!.dispatchEvent(new Event("input", { bubbles: true }));
       await Promise.resolve();
     });
 
@@ -766,6 +811,74 @@ describe("PublicRuntime mobile interactions", () => {
     await waitForCondition(() => scrollToMock.mock.calls.length > 0);
     const runtime = container.querySelector(".survey-runtime") as HTMLElement | null;
     expect(runtime?.style.getPropertyValue("--survey-mobile-browser-top-inset")).toBe("96px");
+
+    root.unmount();
+  });
+
+  it("does not add the Chrome iOS toolbar fallback before the first text question", async () => {
+    Object.defineProperty(window.navigator, "userAgent", {
+      value:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/125.0.6422.80 Mobile/15E148 Safari/604.1",
+      configurable: true,
+    });
+    Object.defineProperty(window, "visualViewport", {
+      value: {
+        offsetTop: 0,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      },
+      configurable: true,
+    });
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const baseBlock = buildSchema().blocks[0]!;
+    const schema = buildSchema({
+      blocks: [
+        {
+          ...baseBlock,
+          id: "welcome",
+          type: "WELCOME",
+          title: "Анкета кандидата",
+          ctaLabel: "Начать",
+          nextBlockId: "text-1",
+        } as SurveySchema["blocks"][number],
+        {
+          ...baseBlock,
+          id: "text-1",
+          type: "TEXT",
+          title: "Расскажите о вашем опыте в продажах или звонках",
+          description: "",
+          placeholder: "Ответ",
+          multiline: true,
+          minLength: 0,
+          maxLength: 2000,
+          allowVoiceAnswer: false,
+          attachVoiceAnswerToResult: false,
+          allowFileAnswer: false,
+          nextBlockId: null,
+        } as SurveySchema["blocks"][number],
+      ],
+    });
+
+    await act(async () => {
+      root.render(React.createElement(PublicRuntime, { surveyId: "survey-1", publicSlug: "survey-1", schema }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const startButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Начать")) as HTMLButtonElement | undefined;
+    expect(startButton).toBeDefined();
+
+    await act(async () => {
+      startButton!.click();
+    });
+
+    await waitForCondition(() => scrollToMock.mock.calls.length > 0);
+    expect(container.textContent).toContain("Расскажите о вашем опыте");
+    const runtime = container.querySelector(".survey-runtime") as HTMLElement | null;
+    expect(runtime?.style.getPropertyValue("--survey-mobile-browser-top-inset")).toBe("0px");
 
     root.unmount();
   });

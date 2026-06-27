@@ -1175,6 +1175,7 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
   const additionalInfoRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollAfterBlockChangeRef = useRef(false);
   const pendingMobileScrollTimeoutsRef = useRef<number[]>([]);
+  const allowChromeIOSFallbackInsetRef = useRef(false);
   const finishRef = useRef<(status: FinishStatus, options?: { allowPartialAnswers?: boolean }) => Promise<void>>(
     async () => undefined,
   );
@@ -1374,9 +1375,11 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
 
   async function settleMobileInputBeforeTransition() {
     if (typeof window === "undefined" || window.innerWidth >= 640) {
+      allowChromeIOSFallbackInsetRef.current = false;
       return;
     }
 
+    allowChromeIOSFallbackInsetRef.current = shouldReserveChromeIOSFallbackInsetForTransition();
     const blurred = blurActiveElementOnMobile();
     if (!blurred) {
       return;
@@ -1414,6 +1417,18 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
     );
   }
 
+  function shouldReserveChromeIOSFallbackInsetForTransition() {
+    if (isEditableElementFocused()) {
+      return true;
+    }
+
+    if (!currentBlock || (currentBlock.type !== "TEXT" && currentBlock.type !== "COMBINED" && currentBlock.type !== "CONTACT")) {
+      return false;
+    }
+
+    return hasDraftValue(answersRef.current[currentBlock.id]);
+  }
+
   function isChromeOnIOS() {
     if (typeof navigator === "undefined") {
       return false;
@@ -1429,7 +1444,10 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
 
     const reportedInset = Math.max(Math.round(window.visualViewport?.offsetTop ?? 0), 0);
     // Chrome on iOS can keep the top toolbar over the page while reporting no visualViewport top offset.
-    const fallbackInset = reportedInset === 0 && isChromeOnIOS() ? MOBILE_CHROME_IOS_TOP_INSET_FALLBACK : 0;
+    const fallbackInset =
+      reportedInset === 0 && allowChromeIOSFallbackInsetRef.current && isChromeOnIOS()
+        ? MOBILE_CHROME_IOS_TOP_INSET_FALLBACK
+        : 0;
 
     return Math.min(Math.max(reportedInset || fallbackInset, 0), MOBILE_BROWSER_TOP_INSET_MAX);
   }
@@ -1531,6 +1549,7 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
     setBlockHistory(nextHistory);
     setCurrentBlockId(previousBlockId);
     persistNavigationState(previousBlockId, nextHistory);
+    allowChromeIOSFallbackInsetRef.current = false;
     shouldScrollAfterBlockChangeRef.current = true;
   }
 
