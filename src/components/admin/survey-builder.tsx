@@ -1457,6 +1457,7 @@ export function SurveyBuilder({
   const [publicSlugDraft, setPublicSlugDraft] = useState(publicSlug);
   const [publicSlugStatus, setPublicSlugStatus] = useState<SaveStatus>("idle");
   const [publicSlugError, setPublicSlugError] = useState("");
+  const [browserOrigin, setBrowserOrigin] = useState("");
   const [versionNumber, setVersionNumber] = useState(currentVersionNumber);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const serialized = JSON.stringify(schema);
@@ -1504,6 +1505,10 @@ export function SurveyBuilder({
   }, [builderUiStorageKey]);
 
   useEffect(() => {
+    setBrowserOrigin(window.location.origin);
+  }, []);
+
+  useEffect(() => {
     setPublicSlugValue(publicSlug);
     setPublicSlugDraft(publicSlug);
     setPublicSlugStatus("idle");
@@ -1545,7 +1550,7 @@ export function SurveyBuilder({
     id: block.id,
     title: formatBlockTargetLabel(block, index),
   }));
-  const publicSurveyUrl = typeof window === "undefined" ? withBasePath(`/s/${publicSlugValue}`) : appAbsoluteUrl(window.location.origin, `/s/${publicSlugValue}`);
+  const publicSurveyUrl = browserOrigin ? appAbsoluteUrl(browserOrigin, `/s/${publicSlugValue}`) : withBasePath(`/s/${publicSlugValue}`);
   const publicSlugChanged = publicSlugDraft.trim() !== publicSlugValue;
 
   const updateBlock = (blockId: string, updater: SurveyBlock | ((block: SurveyBlock) => SurveyBlock)) => {
