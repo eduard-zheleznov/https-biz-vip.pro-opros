@@ -770,12 +770,12 @@ describe("PublicRuntime mobile interactions", () => {
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
     expect(visualViewportAddEventListener).not.toHaveBeenCalled();
     const runtime = container.querySelector(".survey-runtime") as HTMLElement | null;
-    expect(runtime?.style.getPropertyValue("--survey-mobile-browser-top-inset")).toBe("48px");
+    expect(runtime?.style.getPropertyValue("--survey-mobile-browser-top-inset")).toBe("0px");
 
     root.unmount();
   });
 
-  it("keeps the next question below the Chrome iOS toolbar when visualViewport omits the top offset", async () => {
+  it("does not add a Chrome iOS viewport inset after advancing from a text question", async () => {
     Object.defineProperty(window.navigator, "userAgent", {
       value:
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/125.0.6422.80 Mobile/15E148 Safari/604.1",
@@ -854,7 +854,7 @@ describe("PublicRuntime mobile interactions", () => {
 
     await waitForCondition(() => scrollToMock.mock.calls.length > 0);
     const runtime = container.querySelector(".survey-runtime") as HTMLElement | null;
-    expect(runtime?.style.getPropertyValue("--survey-mobile-browser-top-inset")).toBe("96px");
+    expect(runtime?.style.getPropertyValue("--survey-mobile-browser-top-inset")).toBe("0px");
 
     root.unmount();
   });

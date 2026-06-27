@@ -69,7 +69,7 @@ export function PublicCompletion({
   }, [state.shouldPoll, surveyId]);
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl items-center px-5 py-8 sm:px-8">
+    <main className="mx-auto flex min-h-screen w-full max-w-3xl items-start px-5 pb-8 pt-7 sm:items-center sm:px-8 sm:py-8">
       <Card className={`w-full overflow-hidden border p-0 text-center shadow-[0_24px_80px_rgba(15,23,42,0.08)] ${tone.shell}`}>
         <div className="relative px-6 py-10 sm:px-10 sm:py-12">
           <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-white/80 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">

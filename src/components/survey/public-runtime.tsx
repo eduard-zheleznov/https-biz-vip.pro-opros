@@ -227,8 +227,6 @@ const PHONE_COUNTRIES: PhoneCountry[] = [
 
 const MOBILE_RUNTIME_TOP_OFFSET = 32;
 const MOBILE_SCROLL_RETRY_DELAYS = [80, 180, 360, 700, 1100, 1800] as const;
-const MOBILE_BROWSER_TOP_INSET_MAX = 140;
-const MOBILE_CHROME_IOS_TOP_INSET_FALLBACK = 96;
 
 const RECORDER_MIME_TYPES = [
   "audio/mp4;codecs=mp4a.40.2",
@@ -1200,8 +1198,6 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
   const additionalInfoRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollAfterBlockChangeRef = useRef(false);
   const pendingMobileScrollTimeoutsRef = useRef<number[]>([]);
-  const allowChromeIOSFallbackInsetRef = useRef(false);
-  const suppressMobileBrowserTopInsetRef = useRef(false);
   const finishRef = useRef<(status: FinishStatus, options?: { allowPartialAnswers?: boolean }) => Promise<void>>(
     async () => undefined,
   );
@@ -1294,7 +1290,6 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
       );
 
       if (editableTarget) {
-        suppressMobileBrowserTopInsetRef.current = false;
         cancelPendingMobileScrollAdjustments();
       }
     };
@@ -1402,16 +1397,9 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
 
   async function settleMobileInputBeforeTransition() {
     if (typeof window === "undefined" || window.innerWidth >= 640) {
-      allowChromeIOSFallbackInsetRef.current = false;
-      suppressMobileBrowserTopInsetRef.current = false;
       return;
     }
 
-    if (currentBlock?.type !== "CONTACT") {
-      suppressMobileBrowserTopInsetRef.current = false;
-    }
-
-    allowChromeIOSFallbackInsetRef.current = shouldReserveChromeIOSFallbackInsetForTransition();
     const blurred = blurActiveElementOnMobile();
     if (!blurred) {
       return;
@@ -1449,50 +1437,6 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
     );
   }
 
-  function shouldReserveChromeIOSFallbackInsetForTransition() {
-    if (isEditableElementFocused()) {
-      return true;
-    }
-
-    if (!currentBlock || (currentBlock.type !== "TEXT" && currentBlock.type !== "COMBINED" && currentBlock.type !== "CONTACT")) {
-      return false;
-    }
-
-    return hasDraftValue(answersRef.current[currentBlock.id]);
-  }
-
-  function isChromeOnIOS() {
-    if (typeof navigator === "undefined") {
-      return false;
-    }
-
-    return /\bCriOS\//.test(navigator.userAgent);
-  }
-
-  function readMobileBrowserTopInset() {
-    if (typeof window === "undefined" || window.innerWidth >= 640) {
-      return 0;
-    }
-
-    if (suppressMobileBrowserTopInsetRef.current && !isEditableElementFocused()) {
-      return 0;
-    }
-
-    const reportedInset = Math.max(Math.round(window.visualViewport?.offsetTop ?? 0), 0);
-    // Chrome on iOS can keep the top toolbar over the page while reporting no visualViewport top offset.
-    const fallbackInset =
-      reportedInset === 0 && allowChromeIOSFallbackInsetRef.current && isChromeOnIOS()
-        ? MOBILE_CHROME_IOS_TOP_INSET_FALLBACK
-        : 0;
-
-    return Math.min(Math.max(reportedInset || fallbackInset, 0), MOBILE_BROWSER_TOP_INSET_MAX);
-  }
-
-  function applyMobileBrowserTopInset() {
-    const inset = readMobileBrowserTopInset();
-    runtimeRef.current?.style.setProperty("--survey-mobile-browser-top-inset", `${inset}px`);
-  }
-
   function resetMobileBrowserTopInset() {
     runtimeRef.current?.style.setProperty("--survey-mobile-browser-top-inset", "0px");
   }
@@ -1514,7 +1458,7 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
       }
 
       if (isMobile) {
-        applyMobileBrowserTopInset();
+        resetMobileBrowserTopInset();
       }
 
       const target = isMobile
@@ -1563,19 +1507,12 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
     }
 
     const fromBlockId = options?.pushFromBlockId;
-    const fromBlock = fromBlockId ? schema.blocks.find((block) => block.id === fromBlockId) : null;
     const nextHistory =
       fromBlockId && isKnownBlockId(fromBlockId)
         ? [...blockHistoryRef.current, fromBlockId]
         : blockHistoryRef.current;
 
-    if (fromBlock?.type === "CONTACT") {
-      suppressMobileBrowserTopInsetRef.current = true;
-      allowChromeIOSFallbackInsetRef.current = false;
-      resetMobileBrowserTopInset();
-    } else if (fromBlockId) {
-      suppressMobileBrowserTopInsetRef.current = false;
-    }
+    resetMobileBrowserTopInset();
 
     blockHistoryRef.current = nextHistory;
     setBlockHistory(nextHistory);
@@ -1598,8 +1535,7 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
     setBlockHistory(nextHistory);
     setCurrentBlockId(previousBlockId);
     persistNavigationState(previousBlockId, nextHistory);
-    allowChromeIOSFallbackInsetRef.current = false;
-    suppressMobileBrowserTopInsetRef.current = false;
+    resetMobileBrowserTopInset();
     shouldScrollAfterBlockChangeRef.current = true;
   }
 

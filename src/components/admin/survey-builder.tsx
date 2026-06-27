@@ -40,6 +40,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { RichTextTextarea } from "@/components/admin/rich-text-textarea";
 import { MobileTextOverrideButton } from "@/components/admin/mobile-text-override-button";
 import { appAbsoluteUrl, withBasePath } from "@/lib/base-path";
+import { preserveMobileTextOverridesOnUpdate } from "@/lib/mobile-text-overrides";
 import { normalizePublicSlugInput } from "@/lib/public-slug";
 import {
   BLOCK_GROUPS,
@@ -1710,7 +1711,9 @@ export function SurveyBuilder({
           return block;
         }
 
-        return typeof updater === "function" ? updater(block) : updater;
+        const nextBlock = typeof updater === "function" ? updater(block) : updater;
+
+        return preserveMobileTextOverridesOnUpdate(block, nextBlock);
       }),
     }));
   };
