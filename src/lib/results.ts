@@ -32,6 +32,19 @@ export type AiCompletionCopy = {
   fallbackMessage: string;
 };
 
+export const DEFAULT_AI_COMPLETION_COPY: AiCompletionCopy = {
+  processingTitle: "Ваши ответы обрабатываются",
+  processingMessage: "Подождите совсем чуть-чуть. Мы анализируем ответы и подбираем следующий шаг.",
+  greenTitle: "Поздравляем, вы нам подходите",
+  greenMessage: "Напишите руководителю, и он подберёт удобное время для общения.",
+  yellowTitle: "Спасибо за ваши ответы",
+  yellowMessage: "Ваши ответы зафиксированы. При необходимости мы с вами свяжемся.",
+  redTitle: "Спасибо за ваши ответы",
+  redMessage: "Ваши ответы зафиксированы. При необходимости мы с вами свяжемся.",
+  fallbackTitle: "Спасибо за ваши ответы",
+  fallbackMessage: "Ваши ответы зафиксированы. При необходимости мы с вами свяжемся.",
+};
+
 export type ResultPromptOverrides = Record<string, string>;
 
 const AI_NOTE_COLOR_MARKERS: Record<string, string> = {
@@ -205,11 +218,8 @@ export function resolveAiCompletionContent(input: {
       phase: "processing",
       shouldPoll: true,
       color: null,
-      title: cleanCompletionText(input.copy.processingTitle, "Ваши ответы обрабатываются"),
-      message: cleanCompletionText(
-        input.copy.processingMessage,
-        "Подождите совсем чуть-чуть. Мы анализируем ответы и подбираем следующий шаг.",
-      ),
+      title: cleanCompletionText(input.copy.processingTitle, DEFAULT_AI_COMPLETION_COPY.processingTitle),
+      message: cleanCompletionText(input.copy.processingMessage, DEFAULT_AI_COMPLETION_COPY.processingMessage),
     };
   }
 
@@ -218,8 +228,8 @@ export function resolveAiCompletionContent(input: {
       phase: "final",
       shouldPoll: false,
       color: "GREEN",
-      title: cleanCompletionText(input.copy.greenTitle, "Поздравляем, вы нам подходите"),
-      message: cleanCompletionText(input.copy.greenMessage, "Напишите руководителю, и он подберёт удобное время для общения."),
+      title: cleanCompletionText(input.copy.greenTitle, DEFAULT_AI_COMPLETION_COPY.greenTitle),
+      message: cleanCompletionText(input.copy.greenMessage, DEFAULT_AI_COMPLETION_COPY.greenMessage),
     };
   }
 
@@ -228,8 +238,8 @@ export function resolveAiCompletionContent(input: {
       phase: "final",
       shouldPoll: false,
       color: "YELLOW",
-      title: cleanCompletionText(input.copy.yellowTitle, "Спасибо за ваши ответы"),
-      message: cleanCompletionText(input.copy.yellowMessage, "Ваши ответы зафиксированы. При необходимости мы с вами свяжемся."),
+      title: cleanCompletionText(input.copy.yellowTitle, DEFAULT_AI_COMPLETION_COPY.yellowTitle),
+      message: cleanCompletionText(input.copy.yellowMessage, DEFAULT_AI_COMPLETION_COPY.yellowMessage),
     };
   }
 
@@ -238,8 +248,8 @@ export function resolveAiCompletionContent(input: {
       phase: "final",
       shouldPoll: false,
       color: "RED",
-      title: cleanCompletionText(input.copy.redTitle, "Спасибо за ваши ответы"),
-      message: cleanCompletionText(input.copy.redMessage, "Ваши ответы зафиксированы. При необходимости мы с вами свяжемся."),
+      title: cleanCompletionText(input.copy.redTitle, DEFAULT_AI_COMPLETION_COPY.redTitle),
+      message: cleanCompletionText(input.copy.redMessage, DEFAULT_AI_COMPLETION_COPY.redMessage),
     };
   }
 
@@ -247,8 +257,8 @@ export function resolveAiCompletionContent(input: {
     phase: "final",
     shouldPoll: false,
     color: null,
-    title: cleanCompletionText(input.copy.fallbackTitle, "Спасибо за ваши ответы"),
-    message: cleanCompletionText(input.copy.fallbackMessage, "Ваши ответы зафиксированы. При необходимости мы с вами свяжемся."),
+    title: cleanCompletionText(input.copy.fallbackTitle, DEFAULT_AI_COMPLETION_COPY.fallbackTitle),
+    message: cleanCompletionText(input.copy.fallbackMessage, DEFAULT_AI_COMPLETION_COPY.fallbackMessage),
   };
 }
 

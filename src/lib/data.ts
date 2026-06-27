@@ -23,11 +23,16 @@ import {
 import { withBasePath } from "@/lib/base-path";
 import { env } from "@/lib/env";
 import {
+  DEFAULT_AI_COMPLETION_COPY,
   buildResultCopyText,
   buildResultPromptOverrides,
   calculateScorePercent,
+  extractAiResultColor,
   extractSurveyAnalysisMaxScore,
   inferAiScoreSummary,
+  normalizeAiResultColors,
+  resolveAiCompletionContent,
+  type AiCompletionCopy,
 } from "@/lib/results";
 import { buildUniquePublicSlug, normalizePublicSlugInput } from "@/lib/public-slug";
 import { RESPONSE_NOTIFICATION_QUEUE, RESPONSE_TIMEOUT_QUEUE } from "@/lib/jobs/queues";
@@ -65,6 +70,7 @@ import type { AdditionalInfoItem, SurveyBlock, SurveySchema } from "@/types/surv
 import { slugify } from "@/lib/utils";
 import { resolveTelegramChatIdByUsername } from "@/lib/integrations/telegram";
 import { deleteStoredFile, readStoredFile, saveUploadedFile } from "@/lib/storage";
+import type { PublicCompletionState } from "@/types/public-completion";
 
 const PUBLIC_RESPONSE_COOKIE_PREFIX = "survey_response_";
 const MAX_EXTRACTED_ATTACHMENT_CHARS = 12000;
@@ -1216,12 +1222,25 @@ export async function updateSurveySettings(
     telegramRecipientUserIds?: string[];
     telegramChatIdOverride?: string | null;
     telegramChatIdOverrides?: string[];
+    telegramAiFilterEnabled: boolean;
+    telegramAiAllowedColors?: string[];
     aiEnabled: boolean;
     aiProvider?: AiProvider | null;
     aiPrompt: string;
     aiModel?: string | null;
     aiApiKey?: string | null;
     aiClearApiKey?: boolean;
+    completionRoutingEnabled: boolean;
+    completionProcessingTitle?: string | null;
+    completionProcessingMessage?: string | null;
+    completionGreenTitle?: string | null;
+    completionGreenMessage?: string | null;
+    completionYellowTitle?: string | null;
+    completionYellowMessage?: string | null;
+    completionRedTitle?: string | null;
+    completionRedMessage?: string | null;
+    completionFallbackTitle?: string | null;
+    completionFallbackMessage?: string | null;
   },
 ) {
   await resolveSurveyAccess(surveyId, actorId, "edit");
@@ -1263,6 +1282,21 @@ export async function updateSurveySettings(
   }
 
   const normalizedPrompt = input.aiPrompt.trim();
+  const normalizedTelegramAiAllowedColors = normalizeAiResultColors(input.telegramAiAllowedColors ?? [], {
+    fallbackToGreen: input.telegramAiFilterEnabled,
+  });
+  const completionCopy = {
+    processingTitle: input.completionProcessingTitle?.trim() || DEFAULT_AI_COMPLETION_COPY.processingTitle,
+    processingMessage: input.completionProcessingMessage?.trim() || DEFAULT_AI_COMPLETION_COPY.processingMessage,
+    greenTitle: input.completionGreenTitle?.trim() || DEFAULT_AI_COMPLETION_COPY.greenTitle,
+    greenMessage: input.completionGreenMessage?.trim() || DEFAULT_AI_COMPLETION_COPY.greenMessage,
+    yellowTitle: input.completionYellowTitle?.trim() || DEFAULT_AI_COMPLETION_COPY.yellowTitle,
+    yellowMessage: input.completionYellowMessage?.trim() || DEFAULT_AI_COMPLETION_COPY.yellowMessage,
+    redTitle: input.completionRedTitle?.trim() || DEFAULT_AI_COMPLETION_COPY.redTitle,
+    redMessage: input.completionRedMessage?.trim() || DEFAULT_AI_COMPLETION_COPY.redMessage,
+    fallbackTitle: input.completionFallbackTitle?.trim() || DEFAULT_AI_COMPLETION_COPY.fallbackTitle,
+    fallbackMessage: input.completionFallbackMessage?.trim() || DEFAULT_AI_COMPLETION_COPY.fallbackMessage,
+  };
   const normalizedProvider = input.aiProvider ?? existingAiRule?.provider ?? AiProvider.OPENROUTER;
   const normalizedApiKey = input.aiApiKey?.trim() ?? "";
   const nextApiKeyEncrypted = input.aiClearApiKey
@@ -1320,6 +1354,10 @@ export async function updateSurveySettings(
 
   if (input.aiEnabled && !normalizedPrompt) {
     throw new Error("Для AI-анализа заполните prompt.");
+  }
+
+  if (input.completionRoutingEnabled && (!input.aiEnabled || !normalizedPrompt)) {
+    throw new Error("Для финального экрана по AI-зоне включите AI-анализ и заполните prompt.");
   }
 
   if (input.aiEnabled && !nextApiKeyEncrypted && !hasProviderFallbackKey) {
@@ -1395,6 +1433,8 @@ export async function updateSurveySettings(
       where: { surveyId },
       update: {
         telegramEnabled: input.telegramEnabled,
+        telegramAiFilterEnabled: input.telegramAiFilterEnabled,
+        telegramAiAllowedColors: normalizedTelegramAiAllowedColors,
         telegramRecipientUserId: validTelegramRecipientUserIds[0] ?? null,
         telegramRecipientUserIds: validTelegramRecipientUserIds,
         telegramChatIdOverride: telegramChatIdOverrides[0] ?? null,
@@ -1403,6 +1443,8 @@ export async function updateSurveySettings(
       create: {
         surveyId,
         telegramEnabled: input.telegramEnabled,
+        telegramAiFilterEnabled: input.telegramAiFilterEnabled,
+        telegramAiAllowedColors: normalizedTelegramAiAllowedColors,
         telegramRecipientUserId: validTelegramRecipientUserIds[0] ?? null,
         telegramRecipientUserIds: validTelegramRecipientUserIds,
         telegramChatIdOverride: telegramChatIdOverrides[0] ?? null,
@@ -1418,6 +1460,17 @@ export async function updateSurveySettings(
         model: input.aiModel?.trim() || null,
         apiKeyEncrypted: nextApiKeyEncrypted,
         apiKeyLastFour: nextApiKeyLastFour,
+        completionRoutingEnabled: input.completionRoutingEnabled,
+        completionProcessingTitle: completionCopy.processingTitle,
+        completionProcessingMessage: completionCopy.processingMessage,
+        completionGreenTitle: completionCopy.greenTitle,
+        completionGreenMessage: completionCopy.greenMessage,
+        completionYellowTitle: completionCopy.yellowTitle,
+        completionYellowMessage: completionCopy.yellowMessage,
+        completionRedTitle: completionCopy.redTitle,
+        completionRedMessage: completionCopy.redMessage,
+        completionFallbackTitle: completionCopy.fallbackTitle,
+        completionFallbackMessage: completionCopy.fallbackMessage,
       },
       create: {
         surveyId,
@@ -1427,6 +1480,17 @@ export async function updateSurveySettings(
         model: input.aiModel?.trim() || null,
         apiKeyEncrypted: nextApiKeyEncrypted,
         apiKeyLastFour: nextApiKeyLastFour,
+        completionRoutingEnabled: input.completionRoutingEnabled,
+        completionProcessingTitle: completionCopy.processingTitle,
+        completionProcessingMessage: completionCopy.processingMessage,
+        completionGreenTitle: completionCopy.greenTitle,
+        completionGreenMessage: completionCopy.greenMessage,
+        completionYellowTitle: completionCopy.yellowTitle,
+        completionYellowMessage: completionCopy.yellowMessage,
+        completionRedTitle: completionCopy.redTitle,
+        completionRedMessage: completionCopy.redMessage,
+        completionFallbackTitle: completionCopy.fallbackTitle,
+        completionFallbackMessage: completionCopy.fallbackMessage,
       },
     }),
     ...Array.from(activeVersionUpdates.entries()).map(([versionId, schema]) =>
@@ -1648,6 +1712,84 @@ export async function getPublishedSurveyBySlug(publicSlug: string) {
         completionMessage: survey.completionMessage,
       },
     },
+  };
+}
+
+function buildAiCompletionCopy(
+  source:
+    | {
+        completionProcessingTitle: string;
+        completionProcessingMessage: string;
+        completionGreenTitle: string;
+        completionGreenMessage: string;
+        completionYellowTitle: string;
+        completionYellowMessage: string;
+        completionRedTitle: string;
+        completionRedMessage: string;
+        completionFallbackTitle: string;
+        completionFallbackMessage: string;
+      }
+    | null
+    | undefined,
+): AiCompletionCopy {
+  return {
+    processingTitle: source?.completionProcessingTitle ?? DEFAULT_AI_COMPLETION_COPY.processingTitle,
+    processingMessage: source?.completionProcessingMessage ?? DEFAULT_AI_COMPLETION_COPY.processingMessage,
+    greenTitle: source?.completionGreenTitle ?? DEFAULT_AI_COMPLETION_COPY.greenTitle,
+    greenMessage: source?.completionGreenMessage ?? DEFAULT_AI_COMPLETION_COPY.greenMessage,
+    yellowTitle: source?.completionYellowTitle ?? DEFAULT_AI_COMPLETION_COPY.yellowTitle,
+    yellowMessage: source?.completionYellowMessage ?? DEFAULT_AI_COMPLETION_COPY.yellowMessage,
+    redTitle: source?.completionRedTitle ?? DEFAULT_AI_COMPLETION_COPY.redTitle,
+    redMessage: source?.completionRedMessage ?? DEFAULT_AI_COMPLETION_COPY.redMessage,
+    fallbackTitle: source?.completionFallbackTitle ?? DEFAULT_AI_COMPLETION_COPY.fallbackTitle,
+    fallbackMessage: source?.completionFallbackMessage ?? DEFAULT_AI_COMPLETION_COPY.fallbackMessage,
+  };
+}
+
+export async function getPublicResponseCompletionState(surveyId: string): Promise<PublicCompletionState> {
+  const survey = await prisma.survey.findUniqueOrThrow({
+    where: { id: surveyId },
+    include: {
+      publishedVersion: true,
+      aiAnalysisRule: true,
+    },
+  });
+  const schema = normalizeSurveySchema(survey.publishedVersion?.schema ?? createDefaultSurveySchema(survey.title), survey.title);
+  const cookieStore = await cookies();
+  const respondentKey = cookieStore.get(publicResponseCookieName(surveyId))?.value;
+  const response = respondentKey
+    ? await prisma.responseSession.findFirst({
+        where: {
+          surveyId,
+          respondentKey,
+          status: {
+            not: ResponseStatus.IN_PROGRESS,
+          },
+        },
+        orderBy: { startedAt: "desc" },
+        select: {
+          aiNote: true,
+          aiResultColor: true,
+          aiStatus: true,
+        },
+      })
+    : null;
+  const aiRule = survey.aiAnalysisRule;
+  const routingEnabled = Boolean(aiRule?.completionRoutingEnabled && aiRule.enabled && aiRule.prompt.trim() && response);
+  const color = extractAiResultColor(response?.aiResultColor ?? response?.aiNote);
+  const content = resolveAiCompletionContent({
+    routingEnabled,
+    aiStatus: routingEnabled ? (response?.aiStatus ?? JobStatus.SKIPPED) : JobStatus.SKIPPED,
+    color,
+    defaultTitle: survey.completionMessage || schema.settings.completionMessage || "Спасибо за опрос!",
+    copy: buildAiCompletionCopy(aiRule),
+  });
+
+  return {
+    ...content,
+    routingEnabled,
+    showRestartButton: schema.settings.showRestartButton,
+    restartHref: `/s/${survey.publicSlug}?restart=1`,
   };
 }
 
@@ -2137,6 +2279,7 @@ export async function recalculateTimedOutResponseResult(surveyId: string, respon
       data: {
         totalScore: answers.reduce((sum, answer) => sum + answer.score, 0),
         aiNote: null,
+        aiResultColor: null,
         aiStatus: response.survey.aiAnalysisRule?.enabled ? JobStatus.PENDING : JobStatus.SKIPPED,
         telegramStatus: response.survey.notificationConfig?.telegramEnabled ? JobStatus.PENDING : JobStatus.SKIPPED,
       },
@@ -3035,6 +3178,7 @@ export async function recordResponseAnswer(
             ...evaluated.respondentData,
           }
         : session.respondentData) as unknown as Prisma.InputJsonValue,
+      aiResultColor: null,
       aiStatus: survey.aiAnalysisRule?.enabled ? JobStatus.PENDING : JobStatus.SKIPPED,
       telegramStatus: survey.notificationConfig?.telegramEnabled ? JobStatus.PENDING : JobStatus.SKIPPED,
     },

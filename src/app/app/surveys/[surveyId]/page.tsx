@@ -45,6 +45,8 @@ import {
   buildResultCopyText,
   buildResultPromptOverrides,
   calculateScorePercent,
+  DEFAULT_AI_COMPLETION_COPY,
+  extractAiResultColor,
   extractSurveyAnalysisMaxScore,
   inferAiScoreSummary,
 } from "@/lib/results";
@@ -353,12 +355,10 @@ function getAiNoteTone(aiNote: string | null | undefined): {
   panelClassName: string;
   badgeClassName: string;
 } {
-  const normalizedNote = aiNote?.toUpperCase().replaceAll("Ё", "Е") ?? "";
-  const explicitColor = normalizedNote.match(/ЦВЕТ\s*:\s*([A-ZА-Я]+)/)?.[1] ?? null;
-  const token = explicitColor ?? (normalizedNote.includes("КРАСН") ? "КРАСНЫЙ" : normalizedNote.includes("ЖЕЛТ") ? "ЖЕЛТЫЙ" : normalizedNote.includes("ЗЕЛЕН") ? "ЗЕЛЕНЫЙ" : null);
+  const token = extractAiResultColor(aiNote);
 
   switch (token) {
-    case "ЗЕЛЕНЫЙ":
+    case "GREEN":
       return {
         tone: "green",
         label: "Зелёный",
@@ -366,7 +366,7 @@ function getAiNoteTone(aiNote: string | null | undefined): {
         panelClassName: "border-emerald-100 bg-emerald-50 text-emerald-800",
         badgeClassName: "bg-emerald-100 text-emerald-800",
       };
-    case "ЖЕЛТЫЙ":
+    case "YELLOW":
       return {
         tone: "yellow",
         label: "Жёлтый",
@@ -374,7 +374,7 @@ function getAiNoteTone(aiNote: string | null | undefined): {
         panelClassName: "border-amber-100 bg-amber-50 text-amber-800",
         badgeClassName: "bg-amber-100 text-amber-800",
       };
-    case "КРАСНЫЙ":
+    case "RED":
       return {
         tone: "red",
         label: "Красный",
@@ -413,7 +413,7 @@ function getTelegramStatusMessage(status: JobStatus) {
     case JobStatus.PENDING:
       return "Telegram-уведомление ещё ожидает обработки фоновым worker-процессом.";
     case JobStatus.SKIPPED:
-      return "Telegram-уведомление не отправлялось: уведомления выключены или не найден подключенный получатель.";
+      return "Telegram-уведомление не отправлялось: уведомления выключены, не найден получатель или результат не попал в выбранные AI-зоны.";
     case JobStatus.SUCCESS:
       return null;
   }
@@ -756,12 +756,25 @@ export default async function SurveyPage({
       telegramEnabled: formData.get("telegramEnabled") === "on",
       telegramChatIdOverride: String(formData.get("telegramChatIdOverride") ?? "") || null,
       telegramChatIdOverrides: parseTelegramChatIdOverrides(formData.get("telegramChatIdOverrides")),
+      telegramAiFilterEnabled: formData.get("telegramAiFilterEnabled") === "on",
+      telegramAiAllowedColors: formData.getAll("telegramAiAllowedColors").map((value) => String(value)),
       aiEnabled: formData.get("aiEnabled") === "on",
       aiProvider: aiProviderValue === AiProvider.OPENAI ? AiProvider.OPENAI : AiProvider.OPENROUTER,
       aiPrompt: String(formData.get("aiPrompt") ?? ""),
       aiModel: String(formData.get("aiModel") ?? "") || null,
       aiApiKey: String(formData.get("aiApiKey") ?? "") || null,
       aiClearApiKey: formData.get("aiClearApiKey") === "on",
+      completionRoutingEnabled: formData.get("completionRoutingEnabled") === "on",
+      completionProcessingTitle: String(formData.get("completionProcessingTitle") ?? ""),
+      completionProcessingMessage: String(formData.get("completionProcessingMessage") ?? ""),
+      completionGreenTitle: String(formData.get("completionGreenTitle") ?? ""),
+      completionGreenMessage: String(formData.get("completionGreenMessage") ?? ""),
+      completionYellowTitle: String(formData.get("completionYellowTitle") ?? ""),
+      completionYellowMessage: String(formData.get("completionYellowMessage") ?? ""),
+      completionRedTitle: String(formData.get("completionRedTitle") ?? ""),
+      completionRedMessage: String(formData.get("completionRedMessage") ?? ""),
+      completionFallbackTitle: String(formData.get("completionFallbackTitle") ?? ""),
+      completionFallbackMessage: String(formData.get("completionFallbackMessage") ?? ""),
     });
 
     await moveSurveyToFolder(surveyId, currentUser.id, String(formData.get("folderId") ?? "") || null);
@@ -882,6 +895,23 @@ export default async function SurveyPage({
         ? [editorData.survey.notificationConfig.telegramChatIdOverride]
         : []
   ).join("\n");
+  const telegramAiAllowedColors = new Set(
+    editorData.survey.notificationConfig?.telegramAiAllowedColors?.length
+      ? editorData.survey.notificationConfig.telegramAiAllowedColors
+      : ["GREEN"],
+  );
+  const aiCompletionCopy = {
+    processingTitle: editorData.survey.aiAnalysisRule?.completionProcessingTitle ?? DEFAULT_AI_COMPLETION_COPY.processingTitle,
+    processingMessage: editorData.survey.aiAnalysisRule?.completionProcessingMessage ?? DEFAULT_AI_COMPLETION_COPY.processingMessage,
+    greenTitle: editorData.survey.aiAnalysisRule?.completionGreenTitle ?? DEFAULT_AI_COMPLETION_COPY.greenTitle,
+    greenMessage: editorData.survey.aiAnalysisRule?.completionGreenMessage ?? DEFAULT_AI_COMPLETION_COPY.greenMessage,
+    yellowTitle: editorData.survey.aiAnalysisRule?.completionYellowTitle ?? DEFAULT_AI_COMPLETION_COPY.yellowTitle,
+    yellowMessage: editorData.survey.aiAnalysisRule?.completionYellowMessage ?? DEFAULT_AI_COMPLETION_COPY.yellowMessage,
+    redTitle: editorData.survey.aiAnalysisRule?.completionRedTitle ?? DEFAULT_AI_COMPLETION_COPY.redTitle,
+    redMessage: editorData.survey.aiAnalysisRule?.completionRedMessage ?? DEFAULT_AI_COMPLETION_COPY.redMessage,
+    fallbackTitle: editorData.survey.aiAnalysisRule?.completionFallbackTitle ?? DEFAULT_AI_COMPLETION_COPY.fallbackTitle,
+    fallbackMessage: editorData.survey.aiAnalysisRule?.completionFallbackMessage ?? DEFAULT_AI_COMPLETION_COPY.fallbackMessage,
+  };
   const resultsRedirectParams = new URLSearchParams();
   resultsRedirectParams.set("tab", "results");
   if (typeof query.status === "string" && query.status) {
@@ -1211,6 +1241,40 @@ export default async function SurveyPage({
                     <span className="block text-xs text-slate-500">Результаты уходят асинхронно и не блокируют сохранение ответа.</span>
                   </span>
                 </label>
+                <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-4">
+                  <label className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      name="telegramAiFilterEnabled"
+                      defaultChecked={Boolean(editorData.survey.notificationConfig?.telegramAiFilterEnabled)}
+                      className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold text-slate-900">Фильтровать Telegram по AI-зоне</span>
+                      <span className="block text-xs text-slate-500">
+                        Если включено, уведомление уйдёт только по выбранным цветам. Ответы всегда сохраняются в результатах.
+                      </span>
+                    </span>
+                  </label>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                    {[
+                      { value: "GREEN", label: "Зелёная", className: "border-emerald-100 bg-emerald-50 text-emerald-800" },
+                      { value: "YELLOW", label: "Жёлтая", className: "border-amber-100 bg-amber-50 text-amber-800" },
+                      { value: "RED", label: "Красная", className: "border-rose-100 bg-rose-50 text-rose-800" },
+                    ].map((zone) => (
+                      <label key={zone.value} className={`flex items-center gap-2 rounded-2xl border px-3 py-3 text-sm font-semibold ${zone.className}`}>
+                        <input
+                          type="checkbox"
+                          name="telegramAiAllowedColors"
+                          value={zone.value}
+                          defaultChecked={telegramAiAllowedColors.has(zone.value)}
+                          className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                        />
+                        {zone.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
                 <label className="space-y-2">
                   <span className="text-sm font-semibold text-slate-700">Override chat IDs</span>
                   <Textarea
@@ -1317,6 +1381,82 @@ export default async function SurveyPage({
                     <span className="block text-xs text-slate-500">Оставьте поле API key пустым, если хотите сохранить текущий ключ без изменений.</span>
                   </span>
                 </label>
+                <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-4">
+                  <label className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      name="completionRoutingEnabled"
+                      defaultChecked={Boolean(editorData.survey.aiAnalysisRule?.completionRoutingEnabled)}
+                      className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold text-slate-900">Финальный экран по AI-зоне</span>
+                      <span className="block text-xs text-slate-500">
+                        После прохождения кандидат увидит обработку ответов, а затем текст для зелёной, жёлтой или красной зоны.
+                      </span>
+                    </span>
+                  </label>
+                  <div className="mt-4 grid gap-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="space-y-2">
+                        <span className="text-sm font-semibold text-slate-700">Заголовок обработки</span>
+                        <Input name="completionProcessingTitle" defaultValue={aiCompletionCopy.processingTitle} />
+                      </label>
+                      <label className="space-y-2">
+                        <span className="text-sm font-semibold text-slate-700">Текст обработки</span>
+                        <Input name="completionProcessingMessage" defaultValue={aiCompletionCopy.processingMessage} />
+                      </label>
+                    </div>
+                    <div className="grid gap-4 lg:grid-cols-3">
+                      <div className="rounded-[22px] border border-emerald-100 bg-emerald-50/70 p-4">
+                        <p className="text-sm font-semibold text-emerald-900">Зелёная зона</p>
+                        <label className="mt-3 block space-y-2">
+                          <span className="text-xs font-semibold text-emerald-800">Заголовок</span>
+                          <Input name="completionGreenTitle" defaultValue={aiCompletionCopy.greenTitle} />
+                        </label>
+                        <label className="mt-3 block space-y-2">
+                          <span className="text-xs font-semibold text-emerald-800">Текст</span>
+                          <Textarea name="completionGreenMessage" defaultValue={aiCompletionCopy.greenMessage} rows={3} />
+                        </label>
+                      </div>
+                      <div className="rounded-[22px] border border-amber-100 bg-amber-50/70 p-4">
+                        <p className="text-sm font-semibold text-amber-900">Жёлтая зона</p>
+                        <label className="mt-3 block space-y-2">
+                          <span className="text-xs font-semibold text-amber-800">Заголовок</span>
+                          <Input name="completionYellowTitle" defaultValue={aiCompletionCopy.yellowTitle} />
+                        </label>
+                        <label className="mt-3 block space-y-2">
+                          <span className="text-xs font-semibold text-amber-800">Текст</span>
+                          <Textarea name="completionYellowMessage" defaultValue={aiCompletionCopy.yellowMessage} rows={3} />
+                        </label>
+                      </div>
+                      <div className="rounded-[22px] border border-rose-100 bg-rose-50/70 p-4">
+                        <p className="text-sm font-semibold text-rose-900">Красная зона</p>
+                        <label className="mt-3 block space-y-2">
+                          <span className="text-xs font-semibold text-rose-800">Заголовок</span>
+                          <Input name="completionRedTitle" defaultValue={aiCompletionCopy.redTitle} />
+                        </label>
+                        <label className="mt-3 block space-y-2">
+                          <span className="text-xs font-semibold text-rose-800">Текст</span>
+                          <Textarea name="completionRedMessage" defaultValue={aiCompletionCopy.redMessage} rows={3} />
+                        </label>
+                      </div>
+                    </div>
+                    <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                      <p className="text-sm font-semibold text-slate-900">Если AI не вернул цвет или произошла ошибка</p>
+                      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                        <label className="space-y-2">
+                          <span className="text-xs font-semibold text-slate-700">Заголовок</span>
+                          <Input name="completionFallbackTitle" defaultValue={aiCompletionCopy.fallbackTitle} />
+                        </label>
+                        <label className="space-y-2">
+                          <span className="text-xs font-semibold text-slate-700">Текст</span>
+                          <Textarea name="completionFallbackMessage" defaultValue={aiCompletionCopy.fallbackMessage} rows={3} />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div className="mt-6">
                 <Button type="submit">Сохранить настройки</Button>

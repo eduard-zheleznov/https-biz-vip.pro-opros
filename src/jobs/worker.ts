@@ -1,6 +1,6 @@
 import "@/jobs/load-env";
 
-import { buildResultCopyText, inferAiScoreSummary } from "@/lib/results";
+import { buildResultCopyText, extractAiResultColor, inferAiScoreSummary, shouldSendTelegramForAiResult } from "@/lib/results";
 import { analyzeSurveyResult } from "@/lib/integrations/openai";
 import { sendTelegramMessage } from "@/lib/integrations/telegram";
 import { UserRole, UserStatus } from "@/generated/prisma/client";
@@ -126,9 +126,20 @@ async function run() {
     }
     let aiStatus: "PENDING" | "SUCCESS" | "FAILED" | "SKIPPED" = response.aiStatus;
     let telegramStatus: "PENDING" | "SUCCESS" | "FAILED" | "SKIPPED" = response.telegramStatus;
+    let aiResultColor = extractAiResultColor(response.aiResultColor ?? aiNote);
 
     if (aiEnabled && response.aiStatus === "SUCCESS" && aiNote) {
       aiStatus = "SUCCESS";
+      const nextAiResultColor = extractAiResultColor(aiNote);
+      if (nextAiResultColor !== aiResultColor) {
+        aiResultColor = nextAiResultColor;
+        await prisma.responseSession.update({
+          where: { id: response.id },
+          data: {
+            aiResultColor,
+          },
+        });
+      }
     } else if (aiEnabled) {
       try {
         aiNote = await analyzeSurveyResult({
@@ -141,11 +152,13 @@ async function run() {
           apiKey: decryptSecret(aiRule!.apiKeyEncrypted),
           model: aiRule!.model,
         });
+        aiResultColor = extractAiResultColor(aiNote);
 
         await prisma.responseSession.update({
           where: { id: response.id },
           data: {
             aiNote,
+            aiResultColor,
             aiStatus: aiNote ? "SUCCESS" : "SKIPPED",
           },
         });
@@ -156,22 +169,40 @@ async function run() {
           where: { id: response.id },
           data: {
             aiStatus: "FAILED",
+            aiResultColor: null,
           },
         });
         aiStatus = "FAILED";
+        aiResultColor = null;
       }
     } else {
       await prisma.responseSession.update({
         where: { id: response.id },
         data: {
           aiStatus: "SKIPPED",
+          aiResultColor: null,
         },
       });
       aiStatus = "SKIPPED";
+      aiResultColor = null;
     }
 
     if (survey.notificationConfig?.telegramEnabled) {
-      if (chatId) {
+      const canSendByAiFilter = shouldSendTelegramForAiResult({
+        filterEnabled: survey.notificationConfig.telegramAiFilterEnabled,
+        allowedColors: survey.notificationConfig.telegramAiAllowedColors,
+        color: aiResultColor,
+      });
+
+      if (!canSendByAiFilter) {
+        telegramStatus = "SKIPPED";
+        await prisma.responseSession.update({
+          where: { id: response.id },
+          data: {
+            telegramStatus,
+          },
+        });
+      } else if (chatId) {
         try {
           const aiScoreSummary = inferAiScoreSummary(aiNote, maxScore);
           const totalScore = configuredMaxScore > 0 ? response.totalScore : (aiScoreSummary?.totalScore ?? displayTotalScore);
