@@ -3,11 +3,59 @@ import { describe, expect, it } from "vitest";
 import {
   buildResultCopyText,
   calculateScorePercent,
+  extractAiResultColor,
   extractSurveyAnalysisMaxScore,
   inferAiScoreSummary,
+  shouldSendTelegramForAiResult,
 } from "@/lib/results";
 
 describe("result score helpers", () => {
+  it("extracts AI result colors from explicit fields, loose text and emoji markers", () => {
+    expect(extractAiResultColor("ЦВЕТ: ЗЕЛЁНЫЙ\nПОЯСНЕНИЕ: сильный кандидат")).toBe("GREEN");
+    expect(extractAiResultColor('{ "КАТЕГОРИЯ": "ЖЕЛТЫЙ", "ПОЯСНЕНИЕ": "есть сомнения" }')).toBe("YELLOW");
+    expect(extractAiResultColor("Итоговая метка: красный. Не подходит по требованиям.")).toBe("RED");
+    expect(extractAiResultColor("🟢 кандидат подходит")).toBe("GREEN");
+    expect(extractAiResultColor("AI не вернул цвет")).toBeNull();
+  });
+
+  it("decides whether Telegram should be sent for configured AI result colors", () => {
+    expect(
+      shouldSendTelegramForAiResult({
+        filterEnabled: false,
+        allowedColors: [],
+        color: null,
+      }),
+    ).toBe(true);
+    expect(
+      shouldSendTelegramForAiResult({
+        filterEnabled: true,
+        allowedColors: ["GREEN"],
+        color: "GREEN",
+      }),
+    ).toBe(true);
+    expect(
+      shouldSendTelegramForAiResult({
+        filterEnabled: true,
+        allowedColors: ["GREEN"],
+        color: "YELLOW",
+      }),
+    ).toBe(false);
+    expect(
+      shouldSendTelegramForAiResult({
+        filterEnabled: true,
+        allowedColors: ["GREEN", "YELLOW"],
+        color: "YELLOW",
+      }),
+    ).toBe(true);
+    expect(
+      shouldSendTelegramForAiResult({
+        filterEnabled: true,
+        allowedColors: ["GREEN", "YELLOW"],
+        color: null,
+      }),
+    ).toBe(false);
+  });
+
   it("uses full survey maximum for AI score percentages", () => {
     const note = "ОПЫТ: 7/10 Краткий комментарий: Есть опыт. ЦЕННОСТИ: 8/10 Краткий комментарий: Подходит.";
 

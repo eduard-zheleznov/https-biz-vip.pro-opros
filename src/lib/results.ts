@@ -17,6 +17,8 @@ export type AiScoreSummary = {
   percent: number;
 };
 
+export type AiResultColor = "GREEN" | "YELLOW" | "RED";
+
 export type ResultPromptOverrides = Record<string, string>;
 
 const AI_NOTE_COLOR_MARKERS: Record<string, string> = {
@@ -80,22 +82,61 @@ function extractAiField(aiNote: string, fieldNames: string[]) {
 }
 
 function extractAiNoteColorMarker(aiNote: string) {
-  const explicitColor =
-    extractAiField(aiNote, ["КАТЕГОРИЯ", "ЦВЕТ", "ИТОГОВАЯ МЕТКА", "ИТОГОВЫЙ ЦВЕТ"]) ??
-    aiNote.match(/ЦВЕТ\s*:\s*([A-ZА-ЯЁ]+)/iu)?.[1] ??
-    null;
-  const normalizedNote = normalizeAiToken(aiNote);
-  const token = explicitColor
-    ? normalizeAiToken(explicitColor)
-    : normalizedNote.includes("КРАСН")
-      ? "КРАСНЫЙ"
-      : normalizedNote.includes("ЖЕЛТ")
+  const color = extractAiResultColor(aiNote);
+  const token =
+    color === "GREEN"
+      ? "ЗЕЛЕНЫЙ"
+      : color === "YELLOW"
         ? "ЖЕЛТЫЙ"
-        : normalizedNote.includes("ЗЕЛЕН")
-          ? "ЗЕЛЕНЫЙ"
+        : color === "RED"
+          ? "КРАСНЫЙ"
           : null;
 
   return token ? AI_NOTE_COLOR_MARKERS[token] ?? null : null;
+}
+
+export function extractAiResultColor(aiNote: string | null | undefined): AiResultColor | null {
+  const note = aiNote?.trim();
+  if (!note) {
+    return null;
+  }
+
+  const explicitColor =
+    extractAiField(note, ["КАТЕГОРИЯ", "ЦВЕТ", "ИТОГОВАЯ МЕТКА", "ИТОГОВЫЙ ЦВЕТ", "ZONE", "COLOR"]) ??
+    note.match(/(?:КАТЕГОРИЯ|ЦВЕТ|ИТОГОВАЯ\s+МЕТКА|ИТОГОВЫЙ\s+ЦВЕТ|ZONE|COLOR)\s*:\s*([A-ZА-ЯЁ]+)/iu)?.[1] ??
+    null;
+  const source = explicitColor ? normalizeAiToken(explicitColor) : normalizeAiToken(note);
+
+  if (source.includes("🟢") || source.includes("GREEN") || source.includes("ЗЕЛЕН")) {
+    return "GREEN";
+  }
+
+  if (source.includes("🟡") || source.includes("YELLOW") || source.includes("ЖЕЛТ")) {
+    return "YELLOW";
+  }
+
+  if (source.includes("🔴") || source.includes("RED") || source.includes("КРАСН")) {
+    return "RED";
+  }
+
+  return null;
+}
+
+export function shouldSendTelegramForAiResult(input: {
+  filterEnabled: boolean;
+  allowedColors: readonly string[];
+  color: AiResultColor | null;
+}) {
+  if (!input.filterEnabled) {
+    return true;
+  }
+
+  if (!input.color) {
+    return false;
+  }
+
+  const allowedColors = new Set(input.allowedColors.map((color) => color.trim().toUpperCase()));
+  return allowedColors.has(input.color);
 }
 
 function normalizeDecimal(value: string) {
