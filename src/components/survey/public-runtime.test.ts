@@ -775,6 +775,81 @@ describe("PublicRuntime mobile interactions", () => {
     root.unmount();
   });
 
+  it("prefers the current question top over the outer runtime top on mobile after advancing", async () => {
+    HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
+      const className = typeof this.className === "string" ? this.className : "";
+      const text = this.textContent ?? "";
+
+      if (className.includes("survey-runtime")) {
+        return {
+          bottom: 1600,
+          height: 1600,
+          left: 0,
+          right: 375,
+          top: 1000,
+          width: 375,
+          x: 0,
+          y: 1000,
+          toJSON() {
+            return {};
+          },
+        };
+      }
+
+      if (className.includes("space-y-4") && text.includes("Второй блок")) {
+        return {
+          bottom: 1800,
+          height: 1600,
+          left: 0,
+          right: 375,
+          top: 1200,
+          width: 375,
+          x: 0,
+          y: 1200,
+          toJSON() {
+            return {};
+          },
+        };
+      }
+
+      return {
+        bottom: 0,
+        height: 0,
+        left: 0,
+        right: 0,
+        top: 0,
+        width: 0,
+        x: 0,
+        y: 0,
+        toJSON() {
+          return {};
+        },
+      };
+    };
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(React.createElement(PublicRuntime, { surveyId: "survey-1", publicSlug: "survey-1", schema: buildSchema() }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const continueButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Продолжить")) as HTMLButtonElement | undefined;
+    expect(continueButton).toBeDefined();
+
+    await act(async () => {
+      continueButton!.click();
+    });
+
+    await waitForCondition(() => scrollToMock.mock.calls.some((call) => call[0]?.top === 1168));
+    expect(scrollToMock.mock.calls.some((call) => call[0]?.top === 968)).toBe(false);
+
+    root.unmount();
+  });
+
   it("does not add a Chrome iOS viewport inset after advancing from a text question", async () => {
     Object.defineProperty(window.navigator, "userAgent", {
       value:
@@ -1017,6 +1092,55 @@ describe("PublicRuntime mobile interactions", () => {
     );
     const runtime = container.querySelector(".survey-runtime") as HTMLElement | null;
     expect(runtime?.style.getPropertyValue("--survey-mobile-browser-top-inset")).toBe("0px");
+
+    root.unmount();
+  });
+
+  it("uses iPhone-safe font size for contact text fields to avoid browser zoom", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const contactBlock = buildSchema().blocks[0]!;
+    const schema = buildSchema({
+      blocks: [
+        {
+          ...contactBlock,
+          id: "contact-1",
+          type: "CONTACT",
+          title: "Контактные данные",
+          description: "",
+          fields: [
+            {
+              id: "fullName",
+              label: "Имя",
+              placeholder: "Иван",
+              required: true,
+              enabled: true,
+            },
+            {
+              id: "phone",
+              label: "Телефон",
+              placeholder: "+7 999 000-00-00",
+              required: true,
+              enabled: true,
+            },
+          ],
+          submitLabel: "Продолжить",
+          nextBlockId: null,
+        } as SurveySchema["blocks"][number],
+      ],
+    });
+
+    await act(async () => {
+      root.render(React.createElement(PublicRuntime, { surveyId: "survey-1", publicSlug: "survey-1", schema }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const nameInput = container.querySelector('input[placeholder="Иван"]') as HTMLInputElement | null;
+    const phoneInput = container.querySelector('input[type="tel"]') as HTMLInputElement | null;
+    expect(nameInput?.className).toContain("text-[16px]");
+    expect(phoneInput?.className).toContain("text-[16px]");
 
     root.unmount();
   });

@@ -254,6 +254,9 @@ model AiAnalysisRule {
   completionProcessingMessage String     @default("Подождите совсем чуть-чуть. Мы анализируем ответы и подбираем следующий шаг.") @db.Text
   completionGreenTitle        String     @default("Поздравляем, вы нам подходите")
   completionGreenMessage      String     @default("Напишите руководителю, и он подберёт удобное время для общения.") @db.Text
+  completionGreenMaxUrl       String     @default("") @db.Text
+  completionGreenTelegramUrl  String     @default("") @db.Text
+  completionGreenWhatsappUrl  String     @default("") @db.Text
   completionYellowTitle       String     @default("Спасибо за ваши ответы")
   completionYellowMessage     String     @default("Ваши ответы зафиксированы. При необходимости мы с вами свяжемся.") @db.Text
   completionRedTitle          String     @default("Спасибо за ваши ответы")

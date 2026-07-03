@@ -24,6 +24,7 @@ describe("PublicCompletion", () => {
       color: "GREEN",
       title: "Поздравляем",
       message: "Напишите руководителю.",
+      messengerLinks: [],
       showRestartButton: false,
       restartHref: "/s/test",
     };
@@ -41,6 +42,42 @@ describe("PublicCompletion", () => {
     root.unmount();
   });
 
+  it("shows configured messenger buttons only on the final screen", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const state: PublicCompletionState = {
+      phase: "final",
+      shouldPoll: false,
+      routingEnabled: true,
+      color: "GREEN",
+      title: "Поздравляем",
+      message: "Напишите руководителю.",
+      messengerLinks: [
+        { id: "max", label: "MAX", href: "https://max.ru/example" },
+        { id: "telegram", label: "Telegram", href: "https://t.me/example" },
+        { id: "whatsapp", label: "WhatsApp", href: "https://wa.me/79990000000" },
+      ],
+      showRestartButton: false,
+      restartHref: "/s/test",
+    };
+
+    await act(async () => {
+      root.render(React.createElement(PublicCompletion, { initialState: state, surveyId: "survey-1" }));
+      await Promise.resolve();
+    });
+
+    const links = Array.from(container.querySelectorAll("a"));
+    expect(links.map((link) => link.textContent)).toEqual(["MAX", "Telegram", "WhatsApp"]);
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "https://max.ru/example",
+      "https://t.me/example",
+      "https://wa.me/79990000000",
+    ]);
+
+    root.unmount();
+  });
+
   it("keeps the processing card near the top on mobile instead of vertically centering it", async () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -52,6 +89,7 @@ describe("PublicCompletion", () => {
       color: null,
       title: "Ваши ответы обрабатываются",
       message: "Подождите совсем чуть-чуть.",
+      messengerLinks: [],
       showRestartButton: false,
       restartHref: "/s/test",
     };

@@ -769,6 +769,9 @@ export default async function SurveyPage({
       completionProcessingMessage: String(formData.get("completionProcessingMessage") ?? ""),
       completionGreenTitle: String(formData.get("completionGreenTitle") ?? ""),
       completionGreenMessage: String(formData.get("completionGreenMessage") ?? ""),
+      completionGreenMaxUrl: String(formData.get("completionGreenMaxUrl") ?? ""),
+      completionGreenTelegramUrl: String(formData.get("completionGreenTelegramUrl") ?? ""),
+      completionGreenWhatsappUrl: String(formData.get("completionGreenWhatsappUrl") ?? ""),
       completionYellowTitle: String(formData.get("completionYellowTitle") ?? ""),
       completionYellowMessage: String(formData.get("completionYellowMessage") ?? ""),
       completionRedTitle: String(formData.get("completionRedTitle") ?? ""),
@@ -905,6 +908,9 @@ export default async function SurveyPage({
     processingMessage: editorData.survey.aiAnalysisRule?.completionProcessingMessage ?? DEFAULT_AI_COMPLETION_COPY.processingMessage,
     greenTitle: editorData.survey.aiAnalysisRule?.completionGreenTitle ?? DEFAULT_AI_COMPLETION_COPY.greenTitle,
     greenMessage: editorData.survey.aiAnalysisRule?.completionGreenMessage ?? DEFAULT_AI_COMPLETION_COPY.greenMessage,
+    greenMaxUrl: editorData.survey.aiAnalysisRule?.completionGreenMaxUrl ?? "",
+    greenTelegramUrl: editorData.survey.aiAnalysisRule?.completionGreenTelegramUrl ?? "",
+    greenWhatsappUrl: editorData.survey.aiAnalysisRule?.completionGreenWhatsappUrl ?? "",
     yellowTitle: editorData.survey.aiAnalysisRule?.completionYellowTitle ?? DEFAULT_AI_COMPLETION_COPY.yellowTitle,
     yellowMessage: editorData.survey.aiAnalysisRule?.completionYellowMessage ?? DEFAULT_AI_COMPLETION_COPY.yellowMessage,
     redTitle: editorData.survey.aiAnalysisRule?.completionRedTitle ?? DEFAULT_AI_COMPLETION_COPY.redTitle,
@@ -1418,6 +1424,35 @@ export default async function SurveyPage({
                           <span className="text-xs font-semibold text-emerald-800">Текст</span>
                           <Textarea name="completionGreenMessage" defaultValue={aiCompletionCopy.greenMessage} rows={3} />
                         </label>
+                        <div className="mt-4 border-t border-emerald-100 pt-4">
+                          <p className="text-xs font-semibold text-emerald-900">Кнопки мессенджеров для кандидата</p>
+                          <div className="mt-3 grid gap-3">
+                            <label className="space-y-2">
+                              <span className="text-xs font-semibold text-emerald-800">MAX</span>
+                              <Input
+                                name="completionGreenMaxUrl"
+                                defaultValue={aiCompletionCopy.greenMaxUrl}
+                                placeholder="https://max.ru/..."
+                              />
+                            </label>
+                            <label className="space-y-2">
+                              <span className="text-xs font-semibold text-emerald-800">Telegram</span>
+                              <Input
+                                name="completionGreenTelegramUrl"
+                                defaultValue={aiCompletionCopy.greenTelegramUrl}
+                                placeholder="https://t.me/..."
+                              />
+                            </label>
+                            <label className="space-y-2">
+                              <span className="text-xs font-semibold text-emerald-800">WhatsApp</span>
+                              <Input
+                                name="completionGreenWhatsappUrl"
+                                defaultValue={aiCompletionCopy.greenWhatsappUrl}
+                                placeholder="https://wa.me/..."
+                              />
+                            </label>
+                          </div>
+                        </div>
                       </div>
                       <div className="rounded-[22px] border border-amber-100 bg-amber-50/70 p-4">
                         <p className="text-sm font-semibold text-amber-900">Жёлтая зона</p>

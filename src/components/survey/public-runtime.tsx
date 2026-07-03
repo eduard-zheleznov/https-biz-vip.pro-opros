@@ -1461,9 +1461,7 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
         resetMobileBrowserTopInset();
       }
 
-      const target = isMobile
-        ? runtimeRef.current ?? currentBlockSectionRef.current
-        : currentBlockSectionRef.current ?? runtimeRef.current;
+      const target = currentBlockSectionRef.current ?? runtimeRef.current;
       const targetTop = target ? target.getBoundingClientRect().top + window.scrollY : 0;
       const top = isMobile ? targetTop - MOBILE_RUNTIME_TOP_OFFSET : targetTop;
       const nextBehavior = isMobile ? "auto" : behavior;
@@ -3722,7 +3720,7 @@ function ContactQuestion({
                   });
                 }}
                 placeholder={phoneMask(findPhoneCountry(data.phoneCountry))}
-                className="survey-answer-text"
+                className="survey-answer-text text-[16px] sm:text-sm"
                 style={answerTextStyle}
               />
             </div>
@@ -3736,7 +3734,7 @@ function ContactQuestion({
                 })
               }
               placeholder={stripRichTextTokens(field.placeholder)}
-              className="survey-answer-text"
+              className="survey-answer-text text-[16px] sm:text-sm"
               style={answerTextStyle}
             />
           )}

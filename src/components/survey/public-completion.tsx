@@ -34,6 +34,7 @@ export function PublicCompletion({
 }) {
   const [state, setState] = useState(initialState);
   const tone = getToneClasses(state);
+  const messengerLinks = state.phase === "final" ? (state.messengerLinks ?? []) : [];
 
   useEffect(() => {
     if (!state.shouldPoll) {
@@ -87,6 +88,21 @@ export function PublicCompletion({
             <p className="mx-auto mt-4 max-w-2xl whitespace-pre-line text-base leading-7 text-current/75 sm:text-lg">
               {state.message}
             </p>
+          ) : null}
+          {messengerLinks.length ? (
+            <div className="mx-auto mt-7 grid max-w-md gap-3 sm:grid-cols-3">
+              {messengerLinks.map((link) => (
+                <a
+                  key={link.id}
+                  href={link.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-[0_10px_28px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-sky-200 hover:text-sky-700 hover:shadow-[0_16px_36px_rgba(14,165,233,0.16)]"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </div>
           ) : null}
           {state.phase === "processing" ? (
             <div className="mx-auto mt-8 grid max-w-xs grid-cols-3 gap-2" aria-hidden="true">

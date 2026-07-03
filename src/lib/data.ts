@@ -70,13 +70,82 @@ import type { AdditionalInfoItem, SurveyBlock, SurveySchema } from "@/types/surv
 import { slugify } from "@/lib/utils";
 import { resolveTelegramChatIdByUsername } from "@/lib/integrations/telegram";
 import { deleteStoredFile, readStoredFile, saveUploadedFile } from "@/lib/storage";
-import type { PublicCompletionState } from "@/types/public-completion";
+import type { PublicCompletionMessengerLink, PublicCompletionState } from "@/types/public-completion";
 
 const PUBLIC_RESPONSE_COOKIE_PREFIX = "survey_response_";
 const MAX_EXTRACTED_ATTACHMENT_CHARS = 12000;
 const MAX_EXTRACTED_ATTACHMENTS_TOTAL_CHARS = 30000;
 const RESPONSE_TIMEOUT_CLIENT_GRACE_MS = 15000;
+const MAX_MESSENGER_URL_LENGTH = 2000;
 export const RESPONSE_TIMER_EXPIRED_MESSAGE = "Время прохождения истекло.";
+
+const GREEN_MESSENGERS = [
+  {
+    id: "max",
+    label: "MAX",
+    field: "completionGreenMaxUrl",
+    allowedProtocols: ["http:", "https:", "max:"],
+  },
+  {
+    id: "telegram",
+    label: "Telegram",
+    field: "completionGreenTelegramUrl",
+    allowedProtocols: ["http:", "https:", "tg:"],
+  },
+  {
+    id: "whatsapp",
+    label: "WhatsApp",
+    field: "completionGreenWhatsappUrl",
+    allowedProtocols: ["http:", "https:", "whatsapp:"],
+  },
+] as const;
+
+type GreenMessengerField = (typeof GREEN_MESSENGERS)[number]["field"];
+type GreenMessengerSource = Partial<Record<GreenMessengerField, string | null>>;
+
+function ensureMessengerProtocol(value: string) {
+  if (/^[a-z][a-z0-9+.-]*:/iu.test(value)) {
+    return value;
+  }
+
+  if (/^(?:t\.me|telegram\.me|wa\.me|api\.whatsapp\.com|max\.ru|max\.com)\//iu.test(value)) {
+    return `https://${value}`;
+  }
+
+  return value;
+}
+
+function normalizeMessengerUrl(
+  value: string | null | undefined,
+  config: (typeof GREEN_MESSENGERS)[number],
+) {
+  const normalized = ensureMessengerProtocol((value ?? "").trim()).slice(0, MAX_MESSENGER_URL_LENGTH);
+  if (!normalized) {
+    return "";
+  }
+
+  try {
+    const url = new URL(normalized);
+    if ((config.allowedProtocols as readonly string[]).includes(url.protocol)) {
+      return normalized;
+    }
+  } catch {
+    return "";
+  }
+
+  return "";
+}
+
+function buildGreenMessengerLinks(source: GreenMessengerSource | null | undefined): PublicCompletionMessengerLink[] {
+  if (!source) {
+    return [];
+  }
+
+  return GREEN_MESSENGERS.flatMap((config) => {
+    const href = normalizeMessengerUrl(source[config.field], config);
+    return href ? [{ id: config.id, label: config.label, href }] : [];
+  });
+}
 
 export class ResponseTimerExpiredError extends Error {
   constructor() {
@@ -1083,6 +1152,9 @@ export async function duplicateSurvey(surveyId: string, actorId: string) {
         model: source.aiAnalysisRule?.model ?? null,
         apiKeyEncrypted: source.aiAnalysisRule?.apiKeyEncrypted ?? null,
         apiKeyLastFour: source.aiAnalysisRule?.apiKeyLastFour ?? null,
+        completionGreenMaxUrl: source.aiAnalysisRule?.completionGreenMaxUrl ?? "",
+        completionGreenTelegramUrl: source.aiAnalysisRule?.completionGreenTelegramUrl ?? "",
+        completionGreenWhatsappUrl: source.aiAnalysisRule?.completionGreenWhatsappUrl ?? "",
       },
     });
 
@@ -1235,6 +1307,9 @@ export async function updateSurveySettings(
     completionProcessingMessage?: string | null;
     completionGreenTitle?: string | null;
     completionGreenMessage?: string | null;
+    completionGreenMaxUrl?: string | null;
+    completionGreenTelegramUrl?: string | null;
+    completionGreenWhatsappUrl?: string | null;
     completionYellowTitle?: string | null;
     completionYellowMessage?: string | null;
     completionRedTitle?: string | null;
@@ -1296,6 +1371,11 @@ export async function updateSurveySettings(
     redMessage: input.completionRedMessage?.trim() || DEFAULT_AI_COMPLETION_COPY.redMessage,
     fallbackTitle: input.completionFallbackTitle?.trim() || DEFAULT_AI_COMPLETION_COPY.fallbackTitle,
     fallbackMessage: input.completionFallbackMessage?.trim() || DEFAULT_AI_COMPLETION_COPY.fallbackMessage,
+  };
+  const completionGreenMessengerUrls = {
+    completionGreenMaxUrl: normalizeMessengerUrl(input.completionGreenMaxUrl, GREEN_MESSENGERS[0]),
+    completionGreenTelegramUrl: normalizeMessengerUrl(input.completionGreenTelegramUrl, GREEN_MESSENGERS[1]),
+    completionGreenWhatsappUrl: normalizeMessengerUrl(input.completionGreenWhatsappUrl, GREEN_MESSENGERS[2]),
   };
   const normalizedProvider = input.aiProvider ?? existingAiRule?.provider ?? AiProvider.OPENROUTER;
   const normalizedApiKey = input.aiApiKey?.trim() ?? "";
@@ -1465,6 +1545,9 @@ export async function updateSurveySettings(
         completionProcessingMessage: completionCopy.processingMessage,
         completionGreenTitle: completionCopy.greenTitle,
         completionGreenMessage: completionCopy.greenMessage,
+        completionGreenMaxUrl: completionGreenMessengerUrls.completionGreenMaxUrl,
+        completionGreenTelegramUrl: completionGreenMessengerUrls.completionGreenTelegramUrl,
+        completionGreenWhatsappUrl: completionGreenMessengerUrls.completionGreenWhatsappUrl,
         completionYellowTitle: completionCopy.yellowTitle,
         completionYellowMessage: completionCopy.yellowMessage,
         completionRedTitle: completionCopy.redTitle,
@@ -1485,6 +1568,9 @@ export async function updateSurveySettings(
         completionProcessingMessage: completionCopy.processingMessage,
         completionGreenTitle: completionCopy.greenTitle,
         completionGreenMessage: completionCopy.greenMessage,
+        completionGreenMaxUrl: completionGreenMessengerUrls.completionGreenMaxUrl,
+        completionGreenTelegramUrl: completionGreenMessengerUrls.completionGreenTelegramUrl,
+        completionGreenWhatsappUrl: completionGreenMessengerUrls.completionGreenWhatsappUrl,
         completionYellowTitle: completionCopy.yellowTitle,
         completionYellowMessage: completionCopy.yellowMessage,
         completionRedTitle: completionCopy.redTitle,
@@ -1788,6 +1874,7 @@ export async function getPublicResponseCompletionState(surveyId: string): Promis
   return {
     ...content,
     routingEnabled,
+    messengerLinks: content.phase === "final" && content.color === "GREEN" ? buildGreenMessengerLinks(aiRule) : [],
     showRestartButton: schema.settings.showRestartButton,
     restartHref: `/s/${survey.publicSlug}?restart=1`,
   };
