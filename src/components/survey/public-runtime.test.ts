@@ -1141,6 +1141,12 @@ describe("PublicRuntime mobile interactions", () => {
     const phoneInput = container.querySelector('input[type="tel"]') as HTMLInputElement | null;
     expect(nameInput?.className).toContain("text-[16px]");
     expect(phoneInput?.className).toContain("text-[16px]");
+    expect(nameInput?.className).toContain("survey-ios-safe-input");
+    expect(phoneInput?.className).toContain("survey-ios-safe-input");
+    expect(container.querySelector("style")?.textContent).toContain(
+      ".survey-runtime .survey-ios-safe-input",
+    );
+    expect(container.querySelector("style")?.textContent).toContain("max(16px, var(--survey-answer-font-size-mobile))");
 
     root.unmount();
   });

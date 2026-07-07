@@ -95,6 +95,10 @@ const SURVEY_RUNTIME_TYPOGRAPHY_CSS = `
   font-size: var(--survey-answer-font-size-mobile);
   line-height: var(--survey-answer-line-height-mobile);
 }
+.survey-runtime .survey-ios-safe-input {
+  font-size: max(16px, var(--survey-answer-font-size-mobile));
+  line-height: var(--survey-answer-line-height-mobile);
+}
 .survey-runtime .survey-additional-info-description-text {
   font-size: var(--survey-additional-info-description-font-size-mobile);
   line-height: var(--survey-additional-info-description-line-height-mobile);
@@ -114,6 +118,10 @@ const SURVEY_RUNTIME_TYPOGRAPHY_CSS = `
   }
   .survey-runtime .survey-answer-text {
     font-size: var(--survey-answer-font-size);
+    line-height: var(--survey-answer-line-height);
+  }
+  .survey-runtime .survey-ios-safe-input {
+    font-size: max(16px, var(--survey-answer-font-size));
     line-height: var(--survey-answer-line-height);
   }
   .survey-runtime .survey-additional-info-description-text {
@@ -3720,7 +3728,7 @@ function ContactQuestion({
                   });
                 }}
                 placeholder={phoneMask(findPhoneCountry(data.phoneCountry))}
-                className="survey-answer-text text-[16px] sm:text-sm"
+                className="survey-answer-text survey-ios-safe-input text-[16px] sm:text-sm"
                 style={answerTextStyle}
               />
             </div>
@@ -3734,7 +3742,7 @@ function ContactQuestion({
                 })
               }
               placeholder={stripRichTextTokens(field.placeholder)}
-              className="survey-answer-text text-[16px] sm:text-sm"
+              className="survey-answer-text survey-ios-safe-input text-[16px] sm:text-sm"
               style={answerTextStyle}
             />
           )}
