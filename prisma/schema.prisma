@@ -291,6 +291,7 @@ model ResponseSession {
   retakeTokens    ResponseRetakeToken[]
 
   @@index([surveyId, status, startedAt])
+  @@index([status, updatedAt])
   @@index([respondentKey])
 }
 

@@ -1,7 +1,12 @@
 import { PgBoss } from "pg-boss";
 
 import { env } from "@/lib/env";
-import { ARCHIVE_PURGE_QUEUE, RESPONSE_NOTIFICATION_QUEUE, RESPONSE_TIMEOUT_QUEUE } from "@/lib/jobs/queues";
+import {
+  ARCHIVE_PURGE_QUEUE,
+  RESPONSE_NOTIFICATION_QUEUE,
+  RESPONSE_NOTIFICATION_RETRY_QUEUE,
+  RESPONSE_TIMEOUT_QUEUE,
+} from "@/lib/jobs/queues";
 
 const globalForBoss = globalThis as unknown as {
   pgBoss?: PgBoss;
@@ -28,9 +33,11 @@ export async function getBoss() {
 
     await boss.start();
     await ensureQueue(boss, RESPONSE_NOTIFICATION_QUEUE);
+    await ensureQueue(boss, RESPONSE_NOTIFICATION_RETRY_QUEUE);
     await ensureQueue(boss, RESPONSE_TIMEOUT_QUEUE);
     await ensureQueue(boss, ARCHIVE_PURGE_QUEUE);
     await boss.schedule(RESPONSE_TIMEOUT_QUEUE, "* * * * *", { sweep: true }, { key: "response-timeout-sweep" });
+    await boss.schedule(RESPONSE_NOTIFICATION_RETRY_QUEUE, "* * * * *", { sweep: true }, { key: "response-notification-retry-sweep" });
     await boss.schedule(ARCHIVE_PURGE_QUEUE, "0 3 * * *", {});
     globalForBoss.pgBoss = boss;
     return boss;

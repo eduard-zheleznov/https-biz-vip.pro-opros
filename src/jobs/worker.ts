@@ -13,7 +13,13 @@ import {
 import { deleteStoredFile } from "@/lib/storage";
 import { prisma } from "@/lib/prisma";
 import { getBoss } from "@/lib/jobs/boss";
-import { ARCHIVE_PURGE_QUEUE, RESPONSE_NOTIFICATION_QUEUE, RESPONSE_TIMEOUT_QUEUE } from "@/lib/jobs/queues";
+import {
+  ARCHIVE_PURGE_QUEUE,
+  RESPONSE_NOTIFICATION_QUEUE,
+  RESPONSE_NOTIFICATION_RETRY_QUEUE,
+  RESPONSE_TIMEOUT_QUEUE,
+} from "@/lib/jobs/queues";
+import { retryStaleResponseNotifications } from "@/lib/jobs/notification-retry";
 import { decryptSecret } from "@/lib/secrets";
 
 async function run() {
@@ -28,6 +34,13 @@ async function run() {
     }
 
     await finalizeDueTimedOutResponseSessions();
+  });
+
+  await boss.work(RESPONSE_NOTIFICATION_RETRY_QUEUE, async () => {
+    const result = await retryStaleResponseNotifications();
+    if (result.count > 0) {
+      console.info(`Queued ${result.count} stale response notification job(s) for retry.`);
+    }
   });
 
   await boss.work(RESPONSE_NOTIFICATION_QUEUE, async ([job]) => {
@@ -188,6 +201,10 @@ async function run() {
     }
 
     if (survey.notificationConfig?.telegramEnabled) {
+      if (response.telegramStatus === "SUCCESS") {
+        return;
+      }
+
       const canSendByAiFilter = shouldSendTelegramForAiResult({
         filterEnabled: survey.notificationConfig.telegramAiFilterEnabled,
         allowedColors: survey.notificationConfig.telegramAiAllowedColors,
