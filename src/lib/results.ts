@@ -377,7 +377,49 @@ function formatStructuredAiNote(aiNote: string | null | undefined) {
     return null;
   }
 
-  return lines.join("\n");
+  return formatStructuredAiNoteParagraphs(lines).join("\n");
+}
+
+function structuredAiNoteLineGroup(line: string) {
+  const trimmed = line.trim();
+
+  if (/^Вопрос\s+\d+\s*:/iu.test(trimmed)) {
+    return "question";
+  }
+
+  if (/^(?:СИЛЬНЫЕ\s+СТОРОНЫ|РИСКИ|РЕКОМЕНДАЦИЯ|КОММЕНТАРИЙ)\s*:/iu.test(trimmed)) {
+    return "summary";
+  }
+
+  return "meta";
+}
+
+function appendBlankLine(lines: string[]) {
+  if (lines.length > 0 && lines.at(-1) !== "") {
+    lines.push("");
+  }
+}
+
+function formatStructuredAiNoteParagraphs(lines: string[]) {
+  const formatted: string[] = [];
+  let previousGroup: ReturnType<typeof structuredAiNoteLineGroup> | null = null;
+
+  for (const line of lines) {
+    const group = structuredAiNoteLineGroup(line);
+
+    if (group === "question") {
+      appendBlankLine(formatted);
+    }
+
+    if (group === "summary" && previousGroup === "question") {
+      appendBlankLine(formatted);
+    }
+
+    formatted.push(line);
+    previousGroup = group;
+  }
+
+  return formatted;
 }
 
 function formatCompactAnswerValue(value: string) {
