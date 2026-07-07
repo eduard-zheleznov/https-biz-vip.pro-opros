@@ -247,6 +247,47 @@ describe("result score helpers", () => {
     expect(copyText).not.toContain("ЦВЕТ");
   });
 
+  it("preserves structured AI notes for Telegram and copying", () => {
+    const aiNote = [
+      "ОЦЕНКА ИИ: 89/100",
+      "ПРОЦЕНТ: 89%",
+      "КАТЕГОРИЯ: ЗЕЛЕНЫЙ",
+      "КЛАССИФИКАЦИЯ: Сильный кандидат",
+      "СРЕДНИЙ БАЛЛ: 8.9/10",
+      "Вопрос 1: 9/10 - Релевантный опыт. Флаги: нет.",
+      "СИЛЬНЫЕ СТОРОНЫ: опыт, конкретика.",
+      "РИСКИ: уточнить график.",
+      "РЕКОМЕНДАЦИЯ: Позвать на интервью.",
+      "КОММЕНТАРИЙ: Кандидат подходит по ключевым критериям.",
+      "ЦВЕТ: ЗЕЛЕНЫЙ",
+    ].join("\n");
+
+    const copyText = buildResultCopyText({
+      surveyTitle: "Фильтрация АСС и ПМ",
+      status: "COMPLETED",
+      totalScore: 0,
+      maxScore: 0,
+      startedAt: new Date("2026-05-20T00:00:00.000Z"),
+      includeScore: false,
+      includeAnswerScores: false,
+      aiNote,
+      answers: [
+        {
+          blockId: "experience",
+          blockType: "TEXT",
+          prompt: "Опыт",
+          value: "Есть опыт",
+          score: 0,
+        },
+      ],
+    });
+
+    expect(copyText).toContain(`AI-анализ:\n${aiNote.replace(/\nЦВЕТ: ЗЕЛЕНЫЙ/u, "")}`);
+    expect(copyText).toContain("Вопрос 1: 9/10 - Релевантный опыт. Флаги: нет.");
+    expect(copyText).not.toContain("Пояснение:");
+    expect(copyText).not.toContain("ЦВЕТ: ЗЕЛЕНЫЙ");
+  });
+
   it("parses object-like AI notes with percent, category and explanation", () => {
     const copyText = buildResultCopyText({
       surveyTitle: "Для операторов",

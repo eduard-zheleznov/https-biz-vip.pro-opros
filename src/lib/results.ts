@@ -356,6 +356,30 @@ function formatCompactAiNote(aiNote: string | null | undefined, emptyAiNoteLabel
   };
 }
 
+function formatStructuredAiNote(aiNote: string | null | undefined) {
+  const note = aiNote?.trim();
+  if (!note) {
+    return null;
+  }
+
+  const lines = note
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim().length > 0 && !/^цвет\s*:/iu.test(line.trim()));
+  const structuredFieldCount = lines.filter((line) =>
+    /^(?:ОЦЕНКА\s+ИИ|ПРОЦЕНТ|КАТЕГОРИЯ|КЛАССИФИКАЦИЯ|СРЕДНИЙ\s+БАЛЛ|СИЛЬНЫЕ\s+СТОРОНЫ|РИСКИ|РЕКОМЕНДАЦИЯ|КОММЕНТАРИЙ)\s*:/iu.test(
+      line.trim(),
+    ),
+  ).length;
+  const hasQuestionScores = lines.some((line) => /^Вопрос\s+\d+\s*:\s*\d{1,3}\s*\/\s*10\b/iu.test(line.trim()));
+
+  if (structuredFieldCount < 3 && !hasQuestionScores) {
+    return null;
+  }
+
+  return lines.join("\n");
+}
+
 function formatCompactAnswerValue(value: string) {
   const normalized = value.trim();
   return normalized || "-";
@@ -500,14 +524,21 @@ export function buildResultCopyText(input: {
     lines.push(`Итоговый результат: ${scorePercent}% из 100%`);
   }
 
-  const compactAiNote = formatCompactAiNote(input.aiNote, input.emptyAiNoteLabel, maxScore);
-  if (compactAiNote) {
+  const structuredAiNote = formatStructuredAiNote(input.aiNote);
+  if (structuredAiNote) {
     lines.push("");
-    lines.push(`Оценка ИИ: ${compactAiNote.score}`);
-
-    if (compactAiNote.explanation) {
+    lines.push("AI-анализ:");
+    lines.push(structuredAiNote);
+  } else {
+    const compactAiNote = formatCompactAiNote(input.aiNote, input.emptyAiNoteLabel, maxScore);
+    if (compactAiNote) {
       lines.push("");
-      lines.push(`Пояснение: ${compactAiNote.marker ? `${compactAiNote.marker} ` : ""}${compactAiNote.explanation}`);
+      lines.push(`Оценка ИИ: ${compactAiNote.score}`);
+
+      if (compactAiNote.explanation) {
+        lines.push("");
+        lines.push(`Пояснение: ${compactAiNote.marker ? `${compactAiNote.marker} ` : ""}${compactAiNote.explanation}`);
+      }
     }
   }
 
