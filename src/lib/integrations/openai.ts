@@ -12,6 +12,7 @@ const SURVEY_RESULT_ANALYSIS_RETRY_MAX_TOKENS = 2400;
 const SURVEY_RESULT_ANALYSIS_COMPACT_MAX_TOKENS = 1800;
 const SURVEY_RESULT_COLOR_MAX_TOKENS = 32;
 const OPENAI_VOICE_TRANSCRIPTION_MODEL = "whisper-1";
+const OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const OPENROUTER_VOICE_TRANSCRIPTION_MODELS = [
   "openai/gpt-4o-mini-transcribe",
   "openai/whisper-large-v3-turbo",
@@ -27,6 +28,10 @@ const AI_NOTE_COLOR_LINE_PREFIX = "ЦВЕТ";
 const AI_NOTE_COLORS = [AI_NOTE_COLOR_RED, AI_NOTE_COLOR_YELLOW, AI_NOTE_COLOR_GREEN] as const;
 
 type AiNoteColor = (typeof AI_NOTE_COLORS)[number];
+
+export function resolveOpenRouterBaseUrl() {
+  return (env.OPENROUTER_BASE_URL.trim() || OPENROUTER_DEFAULT_BASE_URL).replace(/\/+$/, "");
+}
 
 function resolveAiConfig(input: {
   provider?: AiProvider | null;
@@ -47,7 +52,7 @@ function resolveAiConfig(input: {
     return {
       apiKey,
       model: input.model?.trim() || env.OPENROUTER_MODEL || "openai/gpt-4.1-mini",
-      baseURL: "https://openrouter.ai/api/v1",
+      baseURL: resolveOpenRouterBaseUrl(),
       defaultHeaders: {
         "HTTP-Referer": env.APP_URL,
         "X-Title": "Survey Builder 2.0",
@@ -197,7 +202,7 @@ function audioFormatForFile(file: File) {
 }
 
 async function requestOpenRouterTranscription(input: { file: File; apiKey: string; model: string; audioBase64: string }) {
-  const response = await fetch("https://openrouter.ai/api/v1/audio/transcriptions", {
+  const response = await fetch(`${resolveOpenRouterBaseUrl()}/audio/transcriptions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${input.apiKey}`,
