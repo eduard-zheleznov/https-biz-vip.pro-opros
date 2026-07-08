@@ -402,21 +402,15 @@ function appendBlankLine(lines: string[]) {
 
 function formatStructuredAiNoteParagraphs(lines: string[]) {
   const formatted: string[] = [];
-  let previousGroup: ReturnType<typeof structuredAiNoteLineGroup> | null = null;
 
   for (const line of lines) {
     const group = structuredAiNoteLineGroup(line);
 
-    if (group === "question") {
-      appendBlankLine(formatted);
-    }
-
-    if (group === "summary" && previousGroup === "question") {
+    if (group === "question" || group === "summary") {
       appendBlankLine(formatted);
     }
 
     formatted.push(line);
-    previousGroup = group;
   }
 
   return formatted;
@@ -572,7 +566,7 @@ export function buildResultCopyText(input: {
     lines.push("AI-анализ:");
     lines.push(structuredAiNote);
   } else {
-    const compactAiNote = formatCompactAiNote(input.aiNote, input.emptyAiNoteLabel, maxScore);
+    const compactAiNote = formatCompactAiNote(input.aiNote, input.emptyAiNoteLabel, includeScore ? maxScore : null);
     if (compactAiNote) {
       lines.push("");
       lines.push(`Оценка ИИ: ${compactAiNote.score}`);

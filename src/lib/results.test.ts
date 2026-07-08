@@ -294,14 +294,43 @@ describe("result score helpers", () => {
         "Вопрос 1: 9/10 - Релевантный опыт. Флаги: нет.",
         "",
         "СИЛЬНЫЕ СТОРОНЫ: опыт, конкретика.",
+        "",
         "РИСКИ: уточнить график.",
+        "",
         "РЕКОМЕНДАЦИЯ: Позвать на интервью.",
+        "",
         "КОММЕНТАРИЙ: Кандидат подходит по ключевым критериям.",
       ].join("\n"),
     );
     expect(copyText).toContain("Вопрос 1: 9/10 - Релевантный опыт. Флаги: нет.");
     expect(copyText).not.toContain("Пояснение:");
     expect(copyText).not.toContain("ЦВЕТ: ЗЕЛЕНЫЙ");
+  });
+
+  it("preserves an explicit AI 100-point scale when survey scoring is not shown", () => {
+    const copyText = buildResultCopyText({
+      surveyTitle: "Фильтрация ОКЦ и МПП",
+      status: "COMPLETED",
+      totalScore: 0,
+      maxScore: 59,
+      startedAt: new Date("2026-05-20T00:00:00.000Z"),
+      includeScore: false,
+      includeAnswerScores: false,
+      aiNote:
+        "ОЦЕНКА ИИ: 100/100\nКандидат демонстрирует сильный релевантный опыт. ЦВЕТ: ЗЕЛЕНЫЙ",
+      answers: [
+        {
+          blockId: "experience",
+          blockType: "TEXT",
+          prompt: "Опыт",
+          value: "Есть опыт",
+          score: 0,
+        },
+      ],
+    });
+
+    expect(copyText).toContain("Оценка ИИ: 100/100 (100%) 🟢");
+    expect(copyText).not.toContain("100/59");
   });
 
   it("parses object-like AI notes with percent, category and explanation", () => {
