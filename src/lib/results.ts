@@ -424,37 +424,34 @@ function formatCompactAnswerValue(value: string) {
 }
 
 const SPARSE_AI_RESULT_GUARD_MARKER = "Системная проверка полноты анкеты";
-const MEANINGFUL_AI_ANSWER_MIN_LENGTH = 30;
+const MIN_AI_ANSWER_COMPLETION_RATIO = 0.7;
 
 function isUnansweredAverageValue(value: string) {
   return value.trim().toLowerCase().includes(UNANSWERED_AVERAGE_ANSWER_LABEL.toLowerCase());
 }
 
-function isMeaningfulAiAnswerValue(value: string) {
+function isFilledAiAnswerValue(value: string) {
   const normalized = value.replace(/\s+/g, " ").trim();
 
-  return normalized.length >= MEANINGFUL_AI_ANSWER_MIN_LENGTH && !isUnansweredAverageValue(normalized);
+  return normalized.length > 0 && !isUnansweredAverageValue(normalized);
 }
 
 export function shouldForceRedAiResultForSparseAnswers(answers: ResultAnswer[]) {
   const answerRows = buildAnswerRows(answers).filter((answer) => answer.blockType !== "WELCOME" && answer.blockType !== "CONTACT");
 
-  if (answerRows.length < 3) {
+  if (answerRows.length === 0) {
     return false;
   }
 
   const unansweredCount = answerRows.filter((answer) => isUnansweredAverageValue(answer.value)).length;
-  const meaningfulCount = answerRows.filter((answer) => isMeaningfulAiAnswerValue(answer.value)).length;
-
   if (unansweredCount === 0) {
     return false;
   }
 
-  if (unansweredCount >= Math.ceil(answerRows.length / 2)) {
-    return true;
-  }
+  const filledCount = answerRows.filter((answer) => isFilledAiAnswerValue(answer.value)).length;
+  const filledRatio = filledCount / answerRows.length;
 
-  return meaningfulCount <= 1 && unansweredCount > 0;
+  return filledRatio < MIN_AI_ANSWER_COMPLETION_RATIO;
 }
 
 function buildSparseRedAiNote(aiNote: string | null | undefined) {
@@ -465,9 +462,9 @@ function buildSparseRedAiNote(aiNote: string | null | undefined) {
     "КАТЕГОРИЯ: КРАСНЫЙ",
     "КЛАССИФИКАЦИЯ: Слабый кандидат",
     "СРЕДНИЙ БАЛЛ: 2/10",
-    "РИСКИ: большинство ключевых ответов отсутствует или заполнено технической заглушкой.",
+    "РИСКИ: заполнено менее 70% ключевых вопросов.",
     "РЕКОМЕНДАЦИЯ: Отказать.",
-    "КОММЕНТАРИЙ: Анкета почти не заполнена, поэтому AI-оценка принудительно ограничена красной зоной. Технически начисленные средние баллы не считаются содержательными ответами кандидата.",
+    "КОММЕНТАРИЙ: Анкета заполнена менее чем на 70%, поэтому AI-оценка принудительно ограничена красной зоной. Если заполнено 70% или больше вопросов, отдельные пропуски считаются по среднему баллу и сами по себе не включают эту защиту.",
     "ЦВЕТ: КРАСНЫЙ",
   ].join("\n");
 

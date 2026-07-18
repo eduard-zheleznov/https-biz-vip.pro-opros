@@ -94,37 +94,17 @@ describe("result score helpers", () => {
     expect(normalizeAiResultColors([], { fallbackToGreen: false })).toEqual([]);
   });
 
-  it("forces sparse timed-out AI answers into the red zone", () => {
-    const sparseAnswers = [
-      {
-        blockId: "experience",
-        blockType: "TEXT" as const,
-        prompt: "Опыт",
-        value: "Есть небольшой опыт переписок",
-        score: 0,
-      },
-      {
-        blockId: "results",
-        blockType: "TEXT" as const,
-        prompt: "Результаты",
-        value: "Не отвечено (начислен средний балл)",
-        score: 5,
-      },
-      {
-        blockId: "discipline",
-        blockType: "TEXT" as const,
-        prompt: "Дисциплина",
-        value: "Не отвечено (начислен средний балл)",
-        score: 5,
-      },
-      {
-        blockId: "crm",
-        blockType: "TEXT" as const,
-        prompt: "CRM",
-        value: "Не отвечено (начислен средний балл)",
-        score: 5,
-      },
-    ];
+  it("forces AI answers below 70% completion into the red zone", () => {
+    const sparseAnswers = Array.from({ length: 10 }, (_, index) => ({
+      blockId: `question-${index + 1}`,
+      blockType: "TEXT" as const,
+      prompt: `Вопрос ${index + 1}`,
+      value:
+        index < 6
+          ? "Кандидат дал содержательный ответ по вопросу с фактами и примерами."
+          : "Не отвечено (начислен средний балл)",
+      score: index < 6 ? 0 : 5,
+    }));
 
     expect(shouldForceRedAiResultForSparseAnswers(sparseAnswers)).toBe(true);
 
@@ -138,33 +118,23 @@ describe("result score helpers", () => {
     expect(guarded.aiResultColor).toBe("RED");
     expect(guarded.aiNote).toContain("КАТЕГОРИЯ: КРАСНЫЙ");
     expect(guarded.aiNote).toContain("Системная проверка полноты анкеты");
+    expect(guarded.aiNote).toContain("менее чем на 70%");
   });
 
-  it("does not force red for meaningful completed AI answers", () => {
+  it("keeps unanswered averages when AI answer completion is at least 70%", () => {
     expect(
-      shouldForceRedAiResultForSparseAnswers([
-        {
-          blockId: "experience",
+      shouldForceRedAiResultForSparseAnswers(
+        Array.from({ length: 10 }, (_, index) => ({
+          blockId: `question-${index + 1}`,
           blockType: "TEXT" as const,
-          prompt: "Опыт",
-          value: "Работал в B2B продажах три года, вел холодные звонки и CRM.",
-          score: 0,
-        },
-        {
-          blockId: "results",
-          blockType: "TEXT" as const,
-          prompt: "Результаты",
-          value: "Делал 60 звонков в день, план закрывал на 90-110 процентов.",
-          score: 0,
-        },
-        {
-          blockId: "discipline",
-          blockType: "TEXT" as const,
-          prompt: "Дисциплина",
-          value: "Работал по фиксированному графику, вел отчеты и ежедневный план.",
-          score: 0,
-        },
-      ]),
+          prompt: `Вопрос ${index + 1}`,
+          value:
+            index < 7
+              ? "Кандидат дал содержательный ответ по вопросу с фактами и примерами."
+              : "Не отвечено (начислен средний балл)",
+          score: index < 7 ? 0 : 5,
+        })),
+      ),
     ).toBe(false);
   });
 
