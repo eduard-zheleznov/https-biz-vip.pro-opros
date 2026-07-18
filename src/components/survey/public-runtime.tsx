@@ -58,6 +58,76 @@ type ResponseSessionPayload = {
   session?: { id: string } | null;
 };
 
+const RESPONSE_API_RETRY_DELAYS_MS = [150, 600];
+const TRANSIENT_RESPONSE_FETCH_ERROR_PATTERN =
+  /(?:load failed|failed to fetch|networkerror|network request failed|internet connection|aborted|timed out|timeout)/iu;
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function describeRequestError(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isTransientResponseRequestError(error: unknown) {
+  return TRANSIENT_RESPONSE_FETCH_ERROR_PATTERN.test(describeRequestError(error));
+}
+
+function normalizeResponseRequestError(error: unknown) {
+  if (isTransientResponseRequestError(error)) {
+    return "Не удалось связаться с сервером. Проверьте интернет и нажмите кнопку ещё раз.";
+  }
+
+  const message = describeRequestError(error).trim();
+  return message || "Не удалось выполнить запрос.";
+}
+
+function shouldRetryResponseStatus(status: number) {
+  return status === 408 || status === 425 || status === 429 || (status >= 500 && status <= 504);
+}
+
+async function readResponseSessionPayload(response: Response): Promise<ResponseSessionPayload> {
+  try {
+    return (await response.json()) as ResponseSessionPayload;
+  } catch {
+    return {
+      error: response.ok
+        ? "Сервер вернул ответ в неожиданном формате."
+        : "Сервер временно недоступен. Попробуйте нажать кнопку ещё раз.",
+    };
+  }
+}
+
+async function fetchResponseSessionPayload(url: string, init?: RequestInit) {
+  let lastError: unknown = null;
+
+  for (let attemptIndex = 0; attemptIndex <= RESPONSE_API_RETRY_DELAYS_MS.length; attemptIndex += 1) {
+    try {
+      const response = await fetch(url, init);
+
+      if (shouldRetryResponseStatus(response.status) && attemptIndex < RESPONSE_API_RETRY_DELAYS_MS.length) {
+        await wait(RESPONSE_API_RETRY_DELAYS_MS[attemptIndex]);
+        continue;
+      }
+
+      const payload = await readResponseSessionPayload(response);
+      return { response, payload };
+    } catch (error) {
+      lastError = error;
+
+      if (isTransientResponseRequestError(error) && attemptIndex < RESPONSE_API_RETRY_DELAYS_MS.length) {
+        await wait(RESPONSE_API_RETRY_DELAYS_MS[attemptIndex]);
+        continue;
+      }
+
+      throw new Error(normalizeResponseRequestError(error));
+    }
+  }
+
+  throw new Error(normalizeResponseRequestError(lastError));
+}
+
 type RuntimeNavigationState = {
   currentBlockId: string | null;
   history: string[];
@@ -95,6 +165,10 @@ const SURVEY_RUNTIME_TYPOGRAPHY_CSS = `
   font-size: var(--survey-answer-font-size-mobile);
   line-height: var(--survey-answer-line-height-mobile);
 }
+.survey-runtime .survey-ios-safe-input {
+  font-size: max(16px, var(--survey-answer-font-size-mobile));
+  line-height: var(--survey-answer-line-height-mobile);
+}
 .survey-runtime .survey-additional-info-description-text {
   font-size: var(--survey-additional-info-description-font-size-mobile);
   line-height: var(--survey-additional-info-description-line-height-mobile);
@@ -114,6 +188,10 @@ const SURVEY_RUNTIME_TYPOGRAPHY_CSS = `
   }
   .survey-runtime .survey-answer-text {
     font-size: var(--survey-answer-font-size);
+    line-height: var(--survey-answer-line-height);
+  }
+  .survey-runtime .survey-ios-safe-input {
+    font-size: max(16px, var(--survey-answer-font-size));
     line-height: var(--survey-answer-line-height);
   }
   .survey-runtime .survey-additional-info-description-text {
@@ -1575,10 +1653,9 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
       sessionQuery.set("restart", "1");
     }
 
-    const response = await fetch(withBasePath(`/api/responses/${surveyId}${sessionQuery.size ? `?${sessionQuery}` : ""}`), {
+    const { response, payload } = await fetchResponseSessionPayload(withBasePath(`/api/responses/${surveyId}${sessionQuery.size ? `?${sessionQuery}` : ""}`), {
       credentials: "same-origin",
     });
-    const payload = (await response.json()) as ResponseSessionPayload;
 
     if (!response.ok) {
       throw new Error(payload.error || "Не удалось подготовить сессию прохождения.");
@@ -1619,16 +1696,12 @@ export function PublicRuntime({ surveyId, publicSlug, schema, restartRequested =
 
   async function postWithSessionRetry(body: Record<string, unknown>, options?: { retryOnMissingSession?: boolean }) {
     const submit = async () => {
-      const response = await fetch(withBasePath(`/api/responses/${surveyId}`), {
+      return fetchResponseSessionPayload(withBasePath(`/api/responses/${surveyId}`), {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-
-      const payload = (await response.json()) as ResponseSessionPayload;
-
-      return { response, payload };
     };
 
     let result = await submit();
@@ -3720,7 +3793,7 @@ function ContactQuestion({
                   });
                 }}
                 placeholder={phoneMask(findPhoneCountry(data.phoneCountry))}
-                className="survey-answer-text text-[16px] sm:text-sm"
+                className="survey-answer-text survey-ios-safe-input text-[16px] sm:text-sm"
                 style={answerTextStyle}
               />
             </div>
@@ -3734,7 +3807,7 @@ function ContactQuestion({
                 })
               }
               placeholder={stripRichTextTokens(field.placeholder)}
-              className="survey-answer-text text-[16px] sm:text-sm"
+              className="survey-answer-text survey-ios-safe-input text-[16px] sm:text-sm"
               style={answerTextStyle}
             />
           )}

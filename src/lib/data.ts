@@ -1360,6 +1360,7 @@ export async function updateSurveySettings(
   const normalizedTelegramAiAllowedColors = normalizeAiResultColors(input.telegramAiAllowedColors ?? [], {
     fallbackToGreen: input.telegramAiFilterEnabled,
   });
+  const telegramAiAllowedColors = input.telegramAiFilterEnabled ? normalizedTelegramAiAllowedColors : [];
   const completionCopy = {
     processingTitle: input.completionProcessingTitle?.trim() || DEFAULT_AI_COMPLETION_COPY.processingTitle,
     processingMessage: input.completionProcessingMessage?.trim() || DEFAULT_AI_COMPLETION_COPY.processingMessage,
@@ -1514,7 +1515,7 @@ export async function updateSurveySettings(
       update: {
         telegramEnabled: input.telegramEnabled,
         telegramAiFilterEnabled: input.telegramAiFilterEnabled,
-        telegramAiAllowedColors: normalizedTelegramAiAllowedColors,
+        telegramAiAllowedColors,
         telegramRecipientUserId: validTelegramRecipientUserIds[0] ?? null,
         telegramRecipientUserIds: validTelegramRecipientUserIds,
         telegramChatIdOverride: telegramChatIdOverrides[0] ?? null,
@@ -1524,7 +1525,7 @@ export async function updateSurveySettings(
         surveyId,
         telegramEnabled: input.telegramEnabled,
         telegramAiFilterEnabled: input.telegramAiFilterEnabled,
-        telegramAiAllowedColors: normalizedTelegramAiAllowedColors,
+        telegramAiAllowedColors,
         telegramRecipientUserId: validTelegramRecipientUserIds[0] ?? null,
         telegramRecipientUserIds: validTelegramRecipientUserIds,
         telegramChatIdOverride: telegramChatIdOverrides[0] ?? null,

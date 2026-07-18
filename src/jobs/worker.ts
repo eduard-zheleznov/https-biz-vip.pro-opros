@@ -1,6 +1,12 @@
 import "@/jobs/load-env";
 
-import { buildResultCopyText, extractAiResultColor, inferAiScoreSummary, shouldSendTelegramForAiResult } from "@/lib/results";
+import {
+  applySparseAiResultGuard,
+  buildResultCopyText,
+  extractAiResultColor,
+  inferAiScoreSummary,
+  shouldSendTelegramForAiResult,
+} from "@/lib/results";
 import { analyzeSurveyResult } from "@/lib/integrations/openai";
 import { sendTelegramMessage } from "@/lib/integrations/telegram";
 import { UserRole, UserStatus } from "@/generated/prisma/client";
@@ -13,7 +19,13 @@ import {
 import { deleteStoredFile } from "@/lib/storage";
 import { prisma } from "@/lib/prisma";
 import { getBoss } from "@/lib/jobs/boss";
-import { ARCHIVE_PURGE_QUEUE, RESPONSE_NOTIFICATION_QUEUE, RESPONSE_TIMEOUT_QUEUE } from "@/lib/jobs/queues";
+import {
+  ARCHIVE_PURGE_QUEUE,
+  RESPONSE_NOTIFICATION_QUEUE,
+  RESPONSE_NOTIFICATION_RETRY_QUEUE,
+  RESPONSE_TIMEOUT_QUEUE,
+} from "@/lib/jobs/queues";
+import { retryStaleResponseNotifications } from "@/lib/jobs/notification-retry";
 import { decryptSecret } from "@/lib/secrets";
 
 async function run() {
@@ -28,6 +40,13 @@ async function run() {
     }
 
     await finalizeDueTimedOutResponseSessions();
+  });
+
+  await boss.work(RESPONSE_NOTIFICATION_RETRY_QUEUE, async () => {
+    const result = await retryStaleResponseNotifications();
+    if (result.count > 0) {
+      console.info(`Queued ${result.count} stale response notification job(s) for retry.`);
+    }
   });
 
   await boss.work(RESPONSE_NOTIFICATION_QUEUE, async ([job]) => {
@@ -187,7 +206,32 @@ async function run() {
       aiResultColor = null;
     }
 
+    if (aiEnabled && aiStatus === "SUCCESS") {
+      const sparseGuardResult = applySparseAiResultGuard({
+        answers: response.answers,
+        aiNote,
+        aiResultColor,
+      });
+
+      if (sparseGuardResult.changed) {
+        aiNote = sparseGuardResult.aiNote;
+        aiResultColor = sparseGuardResult.aiResultColor;
+
+        await prisma.responseSession.update({
+          where: { id: response.id },
+          data: {
+            aiNote,
+            aiResultColor,
+          },
+        });
+      }
+    }
+
     if (survey.notificationConfig?.telegramEnabled) {
+      if (response.telegramStatus === "SUCCESS") {
+        return;
+      }
+
       const canSendByAiFilter = shouldSendTelegramForAiResult({
         filterEnabled: survey.notificationConfig.telegramAiFilterEnabled,
         allowedColors: survey.notificationConfig.telegramAiAllowedColors,

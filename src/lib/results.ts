@@ -1,8 +1,8 @@
 import { stripRichTextTokens } from "@/lib/rich-text";
-import { mapAnswersToRows } from "@/lib/survey-schema";
+import { mapAnswersToRows, UNANSWERED_AVERAGE_ANSWER_LABEL } from "@/lib/survey-schema";
 import type { SurveyAnswerRow, SurveyBlockType, SurveySchema } from "@/types/surveys";
 
-type ResultAnswer = {
+export type ResultAnswer = {
   blockId: string;
   blockType: SurveyBlockType;
   prompt: string;
@@ -153,6 +153,8 @@ export function shouldSendTelegramForAiResult(input: {
   allowedColors: readonly string[];
   color: AiResultColor | null;
 }) {
+  const allowedColors = normalizeAiResultColors(input.allowedColors);
+
   if (!input.filterEnabled) {
     return true;
   }
@@ -161,8 +163,8 @@ export function shouldSendTelegramForAiResult(input: {
     return false;
   }
 
-  const allowedColors = new Set(input.allowedColors.map((color) => color.trim().toUpperCase()));
-  return allowedColors.has(input.color);
+  const effectiveAllowedColors = allowedColors.length ? allowedColors : ["GREEN"];
+  return effectiveAllowedColors.includes(input.color);
 }
 
 export function normalizeAiResultColors(
@@ -356,9 +358,148 @@ function formatCompactAiNote(aiNote: string | null | undefined, emptyAiNoteLabel
   };
 }
 
+function formatStructuredAiNote(aiNote: string | null | undefined) {
+  const note = aiNote?.trim();
+  if (!note) {
+    return null;
+  }
+
+  const lines = note
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim().length > 0 && !/^цвет\s*:/iu.test(line.trim()));
+  const structuredFieldCount = lines.filter((line) =>
+    /^(?:ОЦЕНКА\s+ИИ|ПРОЦЕНТ|КАТЕГОРИЯ|КЛАССИФИКАЦИЯ|СРЕДНИЙ\s+БАЛЛ|СИЛЬНЫЕ\s+СТОРОНЫ|РИСКИ|РЕКОМЕНДАЦИЯ|КОММЕНТАРИЙ)\s*:/iu.test(
+      line.trim(),
+    ),
+  ).length;
+  const hasQuestionScores = lines.some((line) => /^Вопрос\s+\d+\s*:\s*\d{1,3}\s*\/\s*10\b/iu.test(line.trim()));
+
+  if (structuredFieldCount < 3 && !hasQuestionScores) {
+    return null;
+  }
+
+  return formatStructuredAiNoteParagraphs(lines).join("\n");
+}
+
+function structuredAiNoteLineGroup(line: string) {
+  const trimmed = line.trim();
+
+  if (/^Вопрос\s+\d+\s*:/iu.test(trimmed)) {
+    return "question";
+  }
+
+  if (/^(?:СИЛЬНЫЕ\s+СТОРОНЫ|РИСКИ|РЕКОМЕНДАЦИЯ|КОММЕНТАРИЙ)\s*:/iu.test(trimmed)) {
+    return "summary";
+  }
+
+  return "meta";
+}
+
+function appendBlankLine(lines: string[]) {
+  if (lines.length > 0 && lines.at(-1) !== "") {
+    lines.push("");
+  }
+}
+
+function formatStructuredAiNoteParagraphs(lines: string[]) {
+  const formatted: string[] = [];
+
+  for (const line of lines) {
+    const group = structuredAiNoteLineGroup(line);
+
+    if (group === "question" || group === "summary") {
+      appendBlankLine(formatted);
+    }
+
+    formatted.push(line);
+  }
+
+  return formatted;
+}
+
 function formatCompactAnswerValue(value: string) {
   const normalized = value.trim();
   return normalized || "-";
+}
+
+const SPARSE_AI_RESULT_GUARD_MARKER = "Системная проверка полноты анкеты";
+const MIN_AI_ANSWER_COMPLETION_RATIO = 0.7;
+
+function isUnansweredAverageValue(value: string) {
+  return value.trim().toLowerCase().includes(UNANSWERED_AVERAGE_ANSWER_LABEL.toLowerCase());
+}
+
+function isFilledAiAnswerValue(value: string) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+
+  return normalized.length > 0 && !isUnansweredAverageValue(normalized);
+}
+
+export function shouldForceRedAiResultForSparseAnswers(answers: ResultAnswer[]) {
+  const answerRows = buildAnswerRows(answers).filter((answer) => answer.blockType !== "WELCOME" && answer.blockType !== "CONTACT");
+
+  if (answerRows.length === 0) {
+    return false;
+  }
+
+  const unansweredCount = answerRows.filter((answer) => isUnansweredAverageValue(answer.value)).length;
+  if (unansweredCount === 0) {
+    return false;
+  }
+
+  const filledCount = answerRows.filter((answer) => isFilledAiAnswerValue(answer.value)).length;
+  const filledRatio = filledCount / answerRows.length;
+
+  return filledRatio < MIN_AI_ANSWER_COMPLETION_RATIO;
+}
+
+function buildSparseRedAiNote(aiNote: string | null | undefined) {
+  const originalNote = aiNote?.trim();
+  const guardNote = [
+    "ОЦЕНКА ИИ: 20/100",
+    "ПРОЦЕНТ: 20%",
+    "КАТЕГОРИЯ: КРАСНЫЙ",
+    "КЛАССИФИКАЦИЯ: Слабый кандидат",
+    "СРЕДНИЙ БАЛЛ: 2/10",
+    "РИСКИ: заполнено менее 70% ключевых вопросов.",
+    "РЕКОМЕНДАЦИЯ: Отказать.",
+    "КОММЕНТАРИЙ: Анкета заполнена менее чем на 70%, поэтому AI-оценка принудительно ограничена красной зоной. Если заполнено 70% или больше вопросов, отдельные пропуски считаются по среднему баллу и сами по себе не включают эту защиту.",
+    "ЦВЕТ: КРАСНЫЙ",
+  ].join("\n");
+
+  if (!originalNote) {
+    return `${guardNote}\n\n${SPARSE_AI_RESULT_GUARD_MARKER}: применено.`;
+  }
+
+  if (originalNote.includes(SPARSE_AI_RESULT_GUARD_MARKER)) {
+    return originalNote;
+  }
+
+  return `${guardNote}\n\n${SPARSE_AI_RESULT_GUARD_MARKER}: применено. Исходный AI-анализ заменен, потому что анкета почти не заполнена.`;
+}
+
+export function applySparseAiResultGuard(input: {
+  answers: ResultAnswer[];
+  aiNote: string | null | undefined;
+  aiResultColor: AiResultColor | null;
+}) {
+  if (!shouldForceRedAiResultForSparseAnswers(input.answers)) {
+    return {
+      aiNote: input.aiNote ?? null,
+      aiResultColor: input.aiResultColor,
+      changed: false,
+    };
+  }
+
+  const nextAiNote = buildSparseRedAiNote(input.aiNote);
+  const changed = input.aiResultColor !== "RED" || nextAiNote !== (input.aiNote ?? null);
+
+  return {
+    aiNote: nextAiNote,
+    aiResultColor: "RED" as const,
+    changed,
+  };
 }
 
 function isCombinedRawAnswerValue(value: unknown) {
@@ -500,14 +641,21 @@ export function buildResultCopyText(input: {
     lines.push(`Итоговый результат: ${scorePercent}% из 100%`);
   }
 
-  const compactAiNote = formatCompactAiNote(input.aiNote, input.emptyAiNoteLabel, maxScore);
-  if (compactAiNote) {
+  const structuredAiNote = formatStructuredAiNote(input.aiNote);
+  if (structuredAiNote) {
     lines.push("");
-    lines.push(`Оценка ИИ: ${compactAiNote.score}`);
-
-    if (compactAiNote.explanation) {
+    lines.push("AI-анализ:");
+    lines.push(structuredAiNote);
+  } else {
+    const compactAiNote = formatCompactAiNote(input.aiNote, input.emptyAiNoteLabel, includeScore ? maxScore : null);
+    if (compactAiNote) {
       lines.push("");
-      lines.push(`Пояснение: ${compactAiNote.marker ? `${compactAiNote.marker} ` : ""}${compactAiNote.explanation}`);
+      lines.push(`Оценка ИИ: ${compactAiNote.score}`);
+
+      if (compactAiNote.explanation) {
+        lines.push("");
+        lines.push(`Пояснение: ${compactAiNote.marker ? `${compactAiNote.marker} ` : ""}${compactAiNote.explanation}`);
+      }
     }
   }
 

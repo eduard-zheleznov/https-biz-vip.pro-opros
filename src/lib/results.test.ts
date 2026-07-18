@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applySparseAiResultGuard,
   buildResultCopyText,
   calculateScorePercent,
   extractAiResultColor,
@@ -9,6 +10,7 @@ import {
   normalizeAiResultColors,
   resolveAiCompletionContent,
   shouldSendTelegramForAiResult,
+  shouldForceRedAiResultForSparseAnswers,
 } from "@/lib/results";
 
 describe("result score helpers", () => {
@@ -28,6 +30,34 @@ describe("result score helpers", () => {
         color: null,
       }),
     ).toBe(true);
+    expect(
+      shouldSendTelegramForAiResult({
+        filterEnabled: false,
+        allowedColors: ["GREEN"],
+        color: "RED",
+      }),
+    ).toBe(true);
+    expect(
+      shouldSendTelegramForAiResult({
+        filterEnabled: false,
+        allowedColors: ["GREEN"],
+        color: "GREEN",
+      }),
+    ).toBe(true);
+    expect(
+      shouldSendTelegramForAiResult({
+        filterEnabled: true,
+        allowedColors: [],
+        color: "GREEN",
+      }),
+    ).toBe(true);
+    expect(
+      shouldSendTelegramForAiResult({
+        filterEnabled: true,
+        allowedColors: [],
+        color: "YELLOW",
+      }),
+    ).toBe(false);
     expect(
       shouldSendTelegramForAiResult({
         filterEnabled: true,
@@ -62,6 +92,50 @@ describe("result score helpers", () => {
     expect(normalizeAiResultColors(["green", "ЖЁЛТЫЙ", "invalid", "GREEN"])).toEqual(["GREEN", "YELLOW"]);
     expect(normalizeAiResultColors([], { fallbackToGreen: true })).toEqual(["GREEN"]);
     expect(normalizeAiResultColors([], { fallbackToGreen: false })).toEqual([]);
+  });
+
+  it("forces AI answers below 70% completion into the red zone", () => {
+    const sparseAnswers = Array.from({ length: 10 }, (_, index) => ({
+      blockId: `question-${index + 1}`,
+      blockType: "TEXT" as const,
+      prompt: `Вопрос ${index + 1}`,
+      value:
+        index < 6
+          ? "Кандидат дал содержательный ответ по вопросу с фактами и примерами."
+          : "Не отвечено (начислен средний балл)",
+      score: index < 6 ? 0 : 5,
+    }));
+
+    expect(shouldForceRedAiResultForSparseAnswers(sparseAnswers)).toBe(true);
+
+    const guarded = applySparseAiResultGuard({
+      answers: sparseAnswers,
+      aiNote: "ОЦЕНКА ИИ: 50/100\nКАТЕГОРИЯ: ЖЕЛТЫЙ\nЦВЕТ: ЖЕЛТЫЙ",
+      aiResultColor: "YELLOW",
+    });
+
+    expect(guarded.changed).toBe(true);
+    expect(guarded.aiResultColor).toBe("RED");
+    expect(guarded.aiNote).toContain("КАТЕГОРИЯ: КРАСНЫЙ");
+    expect(guarded.aiNote).toContain("Системная проверка полноты анкеты");
+    expect(guarded.aiNote).toContain("менее чем на 70%");
+  });
+
+  it("keeps unanswered averages when AI answer completion is at least 70%", () => {
+    expect(
+      shouldForceRedAiResultForSparseAnswers(
+        Array.from({ length: 10 }, (_, index) => ({
+          blockId: `question-${index + 1}`,
+          blockType: "TEXT" as const,
+          prompt: `Вопрос ${index + 1}`,
+          value:
+            index < 7
+              ? "Кандидат дал содержательный ответ по вопросу с фактами и примерами."
+              : "Не отвечено (начислен средний балл)",
+          score: index < 7 ? 0 : 5,
+        })),
+      ),
+    ).toBe(false);
   });
 
   it("resolves AI completion content for processing, colored and fallback states", () => {
@@ -245,6 +319,92 @@ describe("result score helpers", () => {
     expect(copyText).toContain("1. Вид услуги: Создание");
     expect(copyText).not.toContain("Итоговая сумма баллов");
     expect(copyText).not.toContain("ЦВЕТ");
+  });
+
+  it("preserves structured AI notes for Telegram and copying", () => {
+    const aiNote = [
+      "ОЦЕНКА ИИ: 89/100",
+      "ПРОЦЕНТ: 89%",
+      "КАТЕГОРИЯ: ЗЕЛЕНЫЙ",
+      "КЛАССИФИКАЦИЯ: Сильный кандидат",
+      "СРЕДНИЙ БАЛЛ: 8.9/10",
+      "Вопрос 1: 9/10 - Релевантный опыт. Флаги: нет.",
+      "СИЛЬНЫЕ СТОРОНЫ: опыт, конкретика.",
+      "РИСКИ: уточнить график.",
+      "РЕКОМЕНДАЦИЯ: Позвать на интервью.",
+      "КОММЕНТАРИЙ: Кандидат подходит по ключевым критериям.",
+      "ЦВЕТ: ЗЕЛЕНЫЙ",
+    ].join("\n");
+
+    const copyText = buildResultCopyText({
+      surveyTitle: "Фильтрация АСС и ПМ",
+      status: "COMPLETED",
+      totalScore: 0,
+      maxScore: 0,
+      startedAt: new Date("2026-05-20T00:00:00.000Z"),
+      includeScore: false,
+      includeAnswerScores: false,
+      aiNote,
+      answers: [
+        {
+          blockId: "experience",
+          blockType: "TEXT",
+          prompt: "Опыт",
+          value: "Есть опыт",
+          score: 0,
+        },
+      ],
+    });
+
+    expect(copyText).toContain(
+      [
+        "AI-анализ:",
+        "ОЦЕНКА ИИ: 89/100",
+        "ПРОЦЕНТ: 89%",
+        "КАТЕГОРИЯ: ЗЕЛЕНЫЙ",
+        "КЛАССИФИКАЦИЯ: Сильный кандидат",
+        "СРЕДНИЙ БАЛЛ: 8.9/10",
+        "",
+        "Вопрос 1: 9/10 - Релевантный опыт. Флаги: нет.",
+        "",
+        "СИЛЬНЫЕ СТОРОНЫ: опыт, конкретика.",
+        "",
+        "РИСКИ: уточнить график.",
+        "",
+        "РЕКОМЕНДАЦИЯ: Позвать на интервью.",
+        "",
+        "КОММЕНТАРИЙ: Кандидат подходит по ключевым критериям.",
+      ].join("\n"),
+    );
+    expect(copyText).toContain("Вопрос 1: 9/10 - Релевантный опыт. Флаги: нет.");
+    expect(copyText).not.toContain("Пояснение:");
+    expect(copyText).not.toContain("ЦВЕТ: ЗЕЛЕНЫЙ");
+  });
+
+  it("preserves an explicit AI 100-point scale when survey scoring is not shown", () => {
+    const copyText = buildResultCopyText({
+      surveyTitle: "Фильтрация ОКЦ и МПП",
+      status: "COMPLETED",
+      totalScore: 0,
+      maxScore: 59,
+      startedAt: new Date("2026-05-20T00:00:00.000Z"),
+      includeScore: false,
+      includeAnswerScores: false,
+      aiNote:
+        "ОЦЕНКА ИИ: 100/100\nКандидат демонстрирует сильный релевантный опыт. ЦВЕТ: ЗЕЛЕНЫЙ",
+      answers: [
+        {
+          blockId: "experience",
+          blockType: "TEXT",
+          prompt: "Опыт",
+          value: "Есть опыт",
+          score: 0,
+        },
+      ],
+    });
+
+    expect(copyText).toContain("Оценка ИИ: 100/100 (100%) 🟢");
+    expect(copyText).not.toContain("100/59");
   });
 
   it("parses object-like AI notes with percent, category and explanation", () => {

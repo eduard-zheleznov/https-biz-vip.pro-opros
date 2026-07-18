@@ -16,6 +16,7 @@ const envSchema = z.object({
   OPENAI_MODEL: z.string().optional().default("gpt-5.2"),
   OPENROUTER_API_KEY: z.string().optional().default(""),
   OPENROUTER_MODEL: z.string().optional().default("openai/gpt-4.1-mini"),
+  OPENROUTER_BASE_URL: z.string().optional().default(""),
   TELEGRAM_BOT_TOKEN: z.string().optional().default(""),
   TELEGRAM_API_BASE_URL: z.string().url().optional().default("https://api.telegram.org"),
 });
@@ -34,6 +35,7 @@ export const env = envSchema.parse({
   OPENAI_MODEL: process.env.OPENAI_MODEL,
   OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
   OPENROUTER_MODEL: process.env.OPENROUTER_MODEL,
+  OPENROUTER_BASE_URL: process.env.OPENROUTER_BASE_URL,
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
   TELEGRAM_API_BASE_URL: process.env.TELEGRAM_API_BASE_URL,
 });

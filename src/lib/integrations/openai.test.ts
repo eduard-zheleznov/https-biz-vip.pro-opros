@@ -1,18 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const mockEnv = {
+  OPENAI_API_KEY: "",
+  OPENAI_MODEL: "gpt-5.2",
+  OPENROUTER_API_KEY: "",
+  OPENROUTER_MODEL: "openai/gpt-4.1-mini",
+  OPENROUTER_BASE_URL: "",
+  APP_URL: "http://127.0.0.1:3000",
+};
+
 vi.mock("@/lib/env", () => ({
-  env: {
-    OPENAI_API_KEY: "",
-    OPENAI_MODEL: "gpt-5.2",
-    OPENROUTER_API_KEY: "",
-    OPENROUTER_MODEL: "openai/gpt-4.1-mini",
-    APP_URL: "http://127.0.0.1:3000",
-  },
+  env: mockEnv,
 }));
 
 describe("openai integration helpers", () => {
   beforeEach(() => {
     vi.resetModules();
+    mockEnv.OPENROUTER_BASE_URL = "";
   });
 
   describe("extractJsonObject", () => {
@@ -73,6 +77,22 @@ describe("openai integration helpers", () => {
       expect(appendAiNoteColor("ИТОГ: подходит\nЦВЕТ: красный", "ЗЕЛЕНЫЙ")).toBe(
         "ИТОГ: подходит\nЦВЕТ: ЗЕЛЕНЫЙ",
       );
+    });
+  });
+
+  describe("OpenRouter base URL", () => {
+    it("uses the configured OpenRouter relay URL without a trailing slash", async () => {
+      mockEnv.OPENROUTER_BASE_URL = "http://127.0.0.1:18080/api/v1/";
+
+      const { resolveOpenRouterBaseUrl } = await import("@/lib/integrations/openai");
+
+      expect(resolveOpenRouterBaseUrl()).toBe("http://127.0.0.1:18080/api/v1");
+    });
+
+    it("falls back to the official OpenRouter API URL", async () => {
+      const { resolveOpenRouterBaseUrl } = await import("@/lib/integrations/openai");
+
+      expect(resolveOpenRouterBaseUrl()).toBe("https://openrouter.ai/api/v1");
     });
   });
 });

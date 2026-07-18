@@ -8,11 +8,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PublicRuntime } from "@/components/survey/public-runtime";
 import type { SurveySchema } from "@/types/surveys";
 
+const routerPushMock = vi.fn();
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     back: vi.fn(),
     prefetch: vi.fn(),
-    push: vi.fn(),
+    push: routerPushMock,
     refresh: vi.fn(),
     replace: vi.fn(),
   }),
@@ -122,6 +124,7 @@ describe("PublicRuntime mobile interactions", () => {
     document.body.innerHTML = "";
     window.sessionStorage.clear();
     vi.restoreAllMocks();
+    routerPushMock.mockClear();
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1141,6 +1144,112 @@ describe("PublicRuntime mobile interactions", () => {
     const phoneInput = container.querySelector('input[type="tel"]') as HTMLInputElement | null;
     expect(nameInput?.className).toContain("text-[16px]");
     expect(phoneInput?.className).toContain("text-[16px]");
+    expect(nameInput?.className).toContain("survey-ios-safe-input");
+    expect(phoneInput?.className).toContain("survey-ios-safe-input");
+    expect(container.querySelector("style")?.textContent).toContain(
+      ".survey-runtime .survey-ios-safe-input",
+    );
+    expect(container.querySelector("style")?.textContent).toContain("max(16px, var(--survey-answer-font-size-mobile))");
+
+    root.unmount();
+  });
+
+  it("retries a transient Load failed error when completing the final text answer", async () => {
+    let completeAttempts = 0;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? "GET").toUpperCase();
+
+        if (url.includes("/api/responses/")) {
+          if (method === "GET") {
+            return createResponse({
+              status: "IN_PROGRESS",
+              session: { id: "session-1" },
+              answers: [],
+              lastBlockId: null,
+            });
+          }
+
+          const body = typeof init?.body === "string" ? JSON.parse(init.body) as { action?: string } : {};
+
+          if (body.action === "answer") {
+            return createResponse({
+              answer: { nextBlockId: null },
+            });
+          }
+
+          if (body.action === "complete") {
+            completeAttempts += 1;
+
+            if (completeAttempts === 1) {
+              throw new TypeError("Load failed");
+            }
+
+            return createResponse({
+              ok: true,
+              session: { status: "COMPLETED" },
+            });
+          }
+        }
+
+        return createResponse({ error: "Unexpected request" }, 500);
+      }),
+    );
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const baseBlock = buildSchema().blocks[0]!;
+    const schema = buildSchema({
+      blocks: [
+        {
+          ...baseBlock,
+          id: "block-1",
+          type: "TEXT",
+          title: "Финальный текстовый вопрос",
+          description: "",
+          placeholder: "Ответ",
+          multiline: true,
+          minLength: 0,
+          maxLength: 2000,
+          allowVoiceAnswer: false,
+          attachVoiceAnswerToResult: false,
+          allowFileAnswer: false,
+          nextBlockId: null,
+        } as SurveySchema["blocks"][number],
+      ],
+    });
+
+    await act(async () => {
+      root.render(React.createElement(PublicRuntime, { surveyId: "survey-1", publicSlug: "survey-1", schema }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const textarea = container.querySelector("textarea") as HTMLTextAreaElement | null;
+    expect(textarea).not.toBeNull();
+
+    await act(async () => {
+      textarea!.value = "Финальный ответ";
+      textarea!.dispatchEvent(new Event("input", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const continueButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Продолжить")) as HTMLButtonElement | undefined;
+    expect(continueButton).toBeDefined();
+
+    await act(async () => {
+      continueButton!.click();
+      await Promise.resolve();
+    });
+
+    await waitForCondition(() => routerPushMock.mock.calls.some(([url]) => String(url).includes("/done?status=completed")));
+
+    expect(completeAttempts).toBe(2);
+    expect(container.textContent).not.toContain("Load failed");
 
     root.unmount();
   });
