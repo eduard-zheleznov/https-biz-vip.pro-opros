@@ -154,9 +154,8 @@ export function shouldSendTelegramForAiResult(input: {
   color: AiResultColor | null;
 }) {
   const allowedColors = normalizeAiResultColors(input.allowedColors);
-  const filterActive = input.filterEnabled || allowedColors.length > 0;
 
-  if (!filterActive) {
+  if (!input.filterEnabled) {
     return true;
   }
 

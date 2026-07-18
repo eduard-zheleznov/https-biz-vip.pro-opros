@@ -1258,7 +1258,7 @@ export default async function SurveyPage({
                     <span>
                       <span className="block text-sm font-semibold text-slate-900">Фильтровать Telegram по AI-зоне</span>
                       <span className="block text-xs text-slate-500">
-                        Если включено или выбраны зоны ниже, уведомление уйдёт только по выбранным цветам. Ответы всегда сохраняются в результатах.
+                        Если включено, уведомление уйдёт только по выбранным цветам. Ответы всегда сохраняются в результатах.
                       </span>
                     </span>
                   </label>

@@ -36,7 +36,7 @@ describe("result score helpers", () => {
         allowedColors: ["GREEN"],
         color: "RED",
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldSendTelegramForAiResult({
         filterEnabled: false,
@@ -44,6 +44,20 @@ describe("result score helpers", () => {
         color: "GREEN",
       }),
     ).toBe(true);
+    expect(
+      shouldSendTelegramForAiResult({
+        filterEnabled: true,
+        allowedColors: [],
+        color: "GREEN",
+      }),
+    ).toBe(true);
+    expect(
+      shouldSendTelegramForAiResult({
+        filterEnabled: true,
+        allowedColors: [],
+        color: "YELLOW",
+      }),
+    ).toBe(false);
     expect(
       shouldSendTelegramForAiResult({
         filterEnabled: true,

@@ -1357,11 +1357,10 @@ export async function updateSurveySettings(
   }
 
   const normalizedPrompt = input.aiPrompt.trim();
-  const requestedTelegramAiAllowedColors = input.telegramAiAllowedColors ?? [];
   const normalizedTelegramAiAllowedColors = normalizeAiResultColors(input.telegramAiAllowedColors ?? [], {
-    fallbackToGreen: input.telegramAiFilterEnabled || requestedTelegramAiAllowedColors.length > 0,
+    fallbackToGreen: input.telegramAiFilterEnabled,
   });
-  const telegramAiFilterEnabled = input.telegramAiFilterEnabled || normalizedTelegramAiAllowedColors.length > 0;
+  const telegramAiAllowedColors = input.telegramAiFilterEnabled ? normalizedTelegramAiAllowedColors : [];
   const completionCopy = {
     processingTitle: input.completionProcessingTitle?.trim() || DEFAULT_AI_COMPLETION_COPY.processingTitle,
     processingMessage: input.completionProcessingMessage?.trim() || DEFAULT_AI_COMPLETION_COPY.processingMessage,
@@ -1515,8 +1514,8 @@ export async function updateSurveySettings(
       where: { surveyId },
       update: {
         telegramEnabled: input.telegramEnabled,
-        telegramAiFilterEnabled,
-        telegramAiAllowedColors: normalizedTelegramAiAllowedColors,
+        telegramAiFilterEnabled: input.telegramAiFilterEnabled,
+        telegramAiAllowedColors,
         telegramRecipientUserId: validTelegramRecipientUserIds[0] ?? null,
         telegramRecipientUserIds: validTelegramRecipientUserIds,
         telegramChatIdOverride: telegramChatIdOverrides[0] ?? null,
@@ -1525,8 +1524,8 @@ export async function updateSurveySettings(
       create: {
         surveyId,
         telegramEnabled: input.telegramEnabled,
-        telegramAiFilterEnabled,
-        telegramAiAllowedColors: normalizedTelegramAiAllowedColors,
+        telegramAiFilterEnabled: input.telegramAiFilterEnabled,
+        telegramAiAllowedColors,
         telegramRecipientUserId: validTelegramRecipientUserIds[0] ?? null,
         telegramRecipientUserIds: validTelegramRecipientUserIds,
         telegramChatIdOverride: telegramChatIdOverrides[0] ?? null,
