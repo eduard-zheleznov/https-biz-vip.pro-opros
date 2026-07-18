@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applySparseAiResultGuard,
   buildResultCopyText,
   calculateScorePercent,
   extractAiResultColor,
@@ -9,6 +10,7 @@ import {
   normalizeAiResultColors,
   resolveAiCompletionContent,
   shouldSendTelegramForAiResult,
+  shouldForceRedAiResultForSparseAnswers,
 } from "@/lib/results";
 
 describe("result score helpers", () => {
@@ -26,6 +28,20 @@ describe("result score helpers", () => {
         filterEnabled: false,
         allowedColors: [],
         color: null,
+      }),
+    ).toBe(true);
+    expect(
+      shouldSendTelegramForAiResult({
+        filterEnabled: false,
+        allowedColors: ["GREEN"],
+        color: "RED",
+      }),
+    ).toBe(false);
+    expect(
+      shouldSendTelegramForAiResult({
+        filterEnabled: false,
+        allowedColors: ["GREEN"],
+        color: "GREEN",
       }),
     ).toBe(true);
     expect(
@@ -62,6 +78,80 @@ describe("result score helpers", () => {
     expect(normalizeAiResultColors(["green", "ЖЁЛТЫЙ", "invalid", "GREEN"])).toEqual(["GREEN", "YELLOW"]);
     expect(normalizeAiResultColors([], { fallbackToGreen: true })).toEqual(["GREEN"]);
     expect(normalizeAiResultColors([], { fallbackToGreen: false })).toEqual([]);
+  });
+
+  it("forces sparse timed-out AI answers into the red zone", () => {
+    const sparseAnswers = [
+      {
+        blockId: "experience",
+        blockType: "TEXT" as const,
+        prompt: "Опыт",
+        value: "Есть небольшой опыт переписок",
+        score: 0,
+      },
+      {
+        blockId: "results",
+        blockType: "TEXT" as const,
+        prompt: "Результаты",
+        value: "Не отвечено (начислен средний балл)",
+        score: 5,
+      },
+      {
+        blockId: "discipline",
+        blockType: "TEXT" as const,
+        prompt: "Дисциплина",
+        value: "Не отвечено (начислен средний балл)",
+        score: 5,
+      },
+      {
+        blockId: "crm",
+        blockType: "TEXT" as const,
+        prompt: "CRM",
+        value: "Не отвечено (начислен средний балл)",
+        score: 5,
+      },
+    ];
+
+    expect(shouldForceRedAiResultForSparseAnswers(sparseAnswers)).toBe(true);
+
+    const guarded = applySparseAiResultGuard({
+      answers: sparseAnswers,
+      aiNote: "ОЦЕНКА ИИ: 50/100\nКАТЕГОРИЯ: ЖЕЛТЫЙ\nЦВЕТ: ЖЕЛТЫЙ",
+      aiResultColor: "YELLOW",
+    });
+
+    expect(guarded.changed).toBe(true);
+    expect(guarded.aiResultColor).toBe("RED");
+    expect(guarded.aiNote).toContain("КАТЕГОРИЯ: КРАСНЫЙ");
+    expect(guarded.aiNote).toContain("Системная проверка полноты анкеты");
+  });
+
+  it("does not force red for meaningful completed AI answers", () => {
+    expect(
+      shouldForceRedAiResultForSparseAnswers([
+        {
+          blockId: "experience",
+          blockType: "TEXT" as const,
+          prompt: "Опыт",
+          value: "Работал в B2B продажах три года, вел холодные звонки и CRM.",
+          score: 0,
+        },
+        {
+          blockId: "results",
+          blockType: "TEXT" as const,
+          prompt: "Результаты",
+          value: "Делал 60 звонков в день, план закрывал на 90-110 процентов.",
+          score: 0,
+        },
+        {
+          blockId: "discipline",
+          blockType: "TEXT" as const,
+          prompt: "Дисциплина",
+          value: "Работал по фиксированному графику, вел отчеты и ежедневный план.",
+          score: 0,
+        },
+      ]),
+    ).toBe(false);
   });
 
   it("resolves AI completion content for processing, colored and fallback states", () => {

@@ -1,6 +1,12 @@
 import "@/jobs/load-env";
 
-import { buildResultCopyText, extractAiResultColor, inferAiScoreSummary, shouldSendTelegramForAiResult } from "@/lib/results";
+import {
+  applySparseAiResultGuard,
+  buildResultCopyText,
+  extractAiResultColor,
+  inferAiScoreSummary,
+  shouldSendTelegramForAiResult,
+} from "@/lib/results";
 import { analyzeSurveyResult } from "@/lib/integrations/openai";
 import { sendTelegramMessage } from "@/lib/integrations/telegram";
 import { UserRole, UserStatus } from "@/generated/prisma/client";
@@ -198,6 +204,27 @@ async function run() {
       });
       aiStatus = "SKIPPED";
       aiResultColor = null;
+    }
+
+    if (aiEnabled && aiStatus === "SUCCESS") {
+      const sparseGuardResult = applySparseAiResultGuard({
+        answers: response.answers,
+        aiNote,
+        aiResultColor,
+      });
+
+      if (sparseGuardResult.changed) {
+        aiNote = sparseGuardResult.aiNote;
+        aiResultColor = sparseGuardResult.aiResultColor;
+
+        await prisma.responseSession.update({
+          where: { id: response.id },
+          data: {
+            aiNote,
+            aiResultColor,
+          },
+        });
+      }
     }
 
     if (survey.notificationConfig?.telegramEnabled) {

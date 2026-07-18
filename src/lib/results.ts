@@ -1,8 +1,8 @@
 import { stripRichTextTokens } from "@/lib/rich-text";
-import { mapAnswersToRows } from "@/lib/survey-schema";
+import { mapAnswersToRows, UNANSWERED_AVERAGE_ANSWER_LABEL } from "@/lib/survey-schema";
 import type { SurveyAnswerRow, SurveyBlockType, SurveySchema } from "@/types/surveys";
 
-type ResultAnswer = {
+export type ResultAnswer = {
   blockId: string;
   blockType: SurveyBlockType;
   prompt: string;
@@ -153,7 +153,10 @@ export function shouldSendTelegramForAiResult(input: {
   allowedColors: readonly string[];
   color: AiResultColor | null;
 }) {
-  if (!input.filterEnabled) {
+  const allowedColors = normalizeAiResultColors(input.allowedColors);
+  const filterActive = input.filterEnabled || allowedColors.length > 0;
+
+  if (!filterActive) {
     return true;
   }
 
@@ -161,8 +164,8 @@ export function shouldSendTelegramForAiResult(input: {
     return false;
   }
 
-  const allowedColors = new Set(input.allowedColors.map((color) => color.trim().toUpperCase()));
-  return allowedColors.has(input.color);
+  const effectiveAllowedColors = allowedColors.length ? allowedColors : ["GREEN"];
+  return effectiveAllowedColors.includes(input.color);
 }
 
 export function normalizeAiResultColors(
@@ -419,6 +422,88 @@ function formatStructuredAiNoteParagraphs(lines: string[]) {
 function formatCompactAnswerValue(value: string) {
   const normalized = value.trim();
   return normalized || "-";
+}
+
+const SPARSE_AI_RESULT_GUARD_MARKER = "Системная проверка полноты анкеты";
+const MEANINGFUL_AI_ANSWER_MIN_LENGTH = 30;
+
+function isUnansweredAverageValue(value: string) {
+  return value.trim().toLowerCase().includes(UNANSWERED_AVERAGE_ANSWER_LABEL.toLowerCase());
+}
+
+function isMeaningfulAiAnswerValue(value: string) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+
+  return normalized.length >= MEANINGFUL_AI_ANSWER_MIN_LENGTH && !isUnansweredAverageValue(normalized);
+}
+
+export function shouldForceRedAiResultForSparseAnswers(answers: ResultAnswer[]) {
+  const answerRows = buildAnswerRows(answers).filter((answer) => answer.blockType !== "WELCOME" && answer.blockType !== "CONTACT");
+
+  if (answerRows.length < 3) {
+    return false;
+  }
+
+  const unansweredCount = answerRows.filter((answer) => isUnansweredAverageValue(answer.value)).length;
+  const meaningfulCount = answerRows.filter((answer) => isMeaningfulAiAnswerValue(answer.value)).length;
+
+  if (unansweredCount === 0) {
+    return false;
+  }
+
+  if (unansweredCount >= Math.ceil(answerRows.length / 2)) {
+    return true;
+  }
+
+  return meaningfulCount <= 1 && unansweredCount > 0;
+}
+
+function buildSparseRedAiNote(aiNote: string | null | undefined) {
+  const originalNote = aiNote?.trim();
+  const guardNote = [
+    "ОЦЕНКА ИИ: 20/100",
+    "ПРОЦЕНТ: 20%",
+    "КАТЕГОРИЯ: КРАСНЫЙ",
+    "КЛАССИФИКАЦИЯ: Слабый кандидат",
+    "СРЕДНИЙ БАЛЛ: 2/10",
+    "РИСКИ: большинство ключевых ответов отсутствует или заполнено технической заглушкой.",
+    "РЕКОМЕНДАЦИЯ: Отказать.",
+    "КОММЕНТАРИЙ: Анкета почти не заполнена, поэтому AI-оценка принудительно ограничена красной зоной. Технически начисленные средние баллы не считаются содержательными ответами кандидата.",
+    "ЦВЕТ: КРАСНЫЙ",
+  ].join("\n");
+
+  if (!originalNote) {
+    return `${guardNote}\n\n${SPARSE_AI_RESULT_GUARD_MARKER}: применено.`;
+  }
+
+  if (originalNote.includes(SPARSE_AI_RESULT_GUARD_MARKER)) {
+    return originalNote;
+  }
+
+  return `${guardNote}\n\n${SPARSE_AI_RESULT_GUARD_MARKER}: применено. Исходный AI-анализ заменен, потому что анкета почти не заполнена.`;
+}
+
+export function applySparseAiResultGuard(input: {
+  answers: ResultAnswer[];
+  aiNote: string | null | undefined;
+  aiResultColor: AiResultColor | null;
+}) {
+  if (!shouldForceRedAiResultForSparseAnswers(input.answers)) {
+    return {
+      aiNote: input.aiNote ?? null,
+      aiResultColor: input.aiResultColor,
+      changed: false,
+    };
+  }
+
+  const nextAiNote = buildSparseRedAiNote(input.aiNote);
+  const changed = input.aiResultColor !== "RED" || nextAiNote !== (input.aiNote ?? null);
+
+  return {
+    aiNote: nextAiNote,
+    aiResultColor: "RED" as const,
+    changed,
+  };
 }
 
 function isCombinedRawAnswerValue(value: unknown) {
